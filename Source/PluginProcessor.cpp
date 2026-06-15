@@ -1,6 +1,10 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
+// Set to true to bypass all DSP and pass mic input directly to output.
+// Flip to false once standalone audio I/O is confirmed working.
+static constexpr bool FORCE_RAW_PASSTHROUGH = true;
+
 namespace Param
 {
 constexpr auto input = "input"; constexpr auto output = "output"; constexpr auto mix = "mix";
@@ -156,6 +160,25 @@ void StadiumAuraAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, 
     inputMeter.store (peakForBuffer (buffer), std::memory_order_relaxed);
     inputLeftMeter.store (peakForChannel (buffer, 0), std::memory_order_relaxed);
     inputRightMeter.store (peakForChannel (buffer, juce::jmin (1, buffer.getNumChannels() - 1)), std::memory_order_relaxed);
+
+    DBG ("INPUT RMS: " + juce::String (buffer.getMagnitude (0, 0, buffer.getNumSamples())));
+
+    if (FORCE_RAW_PASSTHROUGH)
+    {
+        // Raw pass-through active: buffer goes unmodified from input to output.
+        outputMeter.store (peakForBuffer (buffer), std::memory_order_relaxed);
+        outputLeftMeter.store (peakForChannel (buffer, 0), std::memory_order_relaxed);
+        outputRightMeter.store (peakForChannel (buffer, juce::jmin (1, buffer.getNumChannels() - 1)), std::memory_order_relaxed);
+        gainReductionMeter.store (0.0f, std::memory_order_relaxed);
+        newCompGainReduction.store (0.0f, std::memory_order_relaxed);
+        limiterReductionMeter.store (0.0f, std::memory_order_relaxed);
+        tubeActivityMeter.store (0.0f, std::memory_order_relaxed);
+        updateAnalyzer (buffer);
+        if (buffer.getNumChannels() > 0 && buffer.getNumSamples() > 0)
+            spectrumAnalyzer.pushSamples (buffer.getReadPointer (0), buffer.getNumSamples());
+        return;
+    }
+
     auraProcessor.process (buffer, readParameters());
     outputMeter.store (peakForBuffer (buffer), std::memory_order_relaxed);
     outputLeftMeter.store (peakForChannel (buffer, 0), std::memory_order_relaxed);
