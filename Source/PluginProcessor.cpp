@@ -1,6 +1,7 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include "dsp/EQBand.h"
+#include "dsp/AuraCompressorEngine.h"
 
 namespace Param
 {
@@ -165,6 +166,53 @@ juce::AudioProcessorValueTreeState::ParameterLayout StadiumAuraAudioProcessor::c
             "ms", juce::AudioProcessorParameter::genericParameter, milliseconds));
     }
 
+    // ── New compressor engine parameters (COMP_* / EMOTION_LOCK_*) ──────────────
+    auto ratio01  = [] (float v, int) { return juce::String (v, 2) + ":1"; };
+    layout.add (std::make_unique<Bool>   ("COMP_ENABLED",          "Comp Engine Enable",          true));
+    layout.add (std::make_unique<Choice> ("COMP_MODEL",            "Comp Model",
+        juce::StringArray { "Lightning FET", "Velvet Opto", "Crown Mu", "Punch Cell", "Glue Bus", "Modern Clean" }, 1));
+    layout.add (std::make_unique<Float>  ("COMP_INPUT",            "Comp Input",
+        juce::NormalisableRange<float> (-24.0f, 24.0f, 0.01f), 0.0f,    "dB",  juce::AudioProcessorParameter::genericParameter, db));
+    layout.add (std::make_unique<Float>  ("COMP_THRESHOLD",        "Comp Threshold",
+        juce::NormalisableRange<float> (-60.0f, 0.0f, 0.01f), -24.0f,   "dB",  juce::AudioProcessorParameter::genericParameter, db));
+    layout.add (std::make_unique<Float>  ("COMP_AMOUNT",           "Comp Amount",
+        juce::NormalisableRange<float> (0.0f, 100.0f, 0.01f), 50.0f,    "%",   juce::AudioProcessorParameter::genericParameter, percent));
+    layout.add (std::make_unique<Float>  ("COMP_RATIO",            "Comp Ratio",
+        juce::NormalisableRange<float> (1.0f, 20.0f, 0.01f, 0.4f), 3.0f, "",   juce::AudioProcessorParameter::genericParameter, ratio01));
+    layout.add (std::make_unique<Float>  ("COMP_ATTACK",           "Comp Attack",
+        juce::NormalisableRange<float> (0.02f, 100.0f, 0.01f, 0.3f), 10.0f, "ms", juce::AudioProcessorParameter::genericParameter, milliseconds));
+    layout.add (std::make_unique<Float>  ("COMP_RELEASE",          "Comp Release",
+        juce::NormalisableRange<float> (20.0f, 5000.0f, 0.1f, 0.3f), 300.0f, "ms", juce::AudioProcessorParameter::genericParameter, milliseconds));
+    layout.add (std::make_unique<Float>  ("COMP_MAKEUP",           "Comp Makeup",
+        juce::NormalisableRange<float> (-12.0f, 24.0f, 0.01f), 0.0f,    "dB",  juce::AudioProcessorParameter::genericParameter, db));
+    layout.add (std::make_unique<Float>  ("COMP_MIX",              "Comp Mix",
+        juce::NormalisableRange<float> (0.0f, 100.0f, 0.01f), 100.0f,   "%",   juce::AudioProcessorParameter::genericParameter, percent));
+    layout.add (std::make_unique<Float>  ("COMP_SIDECHAIN_HPF",    "Comp SC HPF",
+        juce::NormalisableRange<float> (20.0f, 300.0f, 0.1f, 0.3f), 90.0f, "Hz", juce::AudioProcessorParameter::genericParameter, hz));
+    layout.add (std::make_unique<Bool>   ("COMP_AUTO_GAIN",        "Comp Auto Gain",              false));
+    layout.add (std::make_unique<Bool>   ("COMP_AURA_LEVEL",       "Aura Level",                  false));
+    layout.add (std::make_unique<Choice> ("COMP_DETECTOR_MODE",    "Comp Detector",
+        juce::StringArray { "Peak", "RMS", "Vocal Focus", "Mid", "Side" }, 1));
+    layout.add (std::make_unique<Bool>   ("COMP_LINK",             "Comp Stereo Link",            true));
+    layout.add (std::make_unique<Float>  ("COMP_SATURATION",       "Comp Saturation",
+        juce::NormalisableRange<float> (0.0f, 100.0f, 0.01f), 0.0f,     "%",   juce::AudioProcessorParameter::genericParameter, percent));
+
+    layout.add (std::make_unique<Bool>   ("EMOTION_LOCK_ENABLED",          "Emotion Lock Enable",    false));
+    layout.add (std::make_unique<Float>  ("EMOTION_LOCK_AMOUNT",           "Emotion Lock Amount",
+        juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.5f));
+    layout.add (std::make_unique<Float>  ("EMOTION_LOCK_BREATH_PROTECT",   "Emotion Lock Breath",
+        juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.35f));
+    layout.add (std::make_unique<Float>  ("EMOTION_LOCK_PRESENCE_PROTECT", "Emotion Lock Presence",
+        juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.5f));
+    layout.add (std::make_unique<Float>  ("EMOTION_LOCK_AIR_PROTECT",      "Emotion Lock Air",
+        juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.35f));
+    layout.add (std::make_unique<Float>  ("EMOTION_LOCK_HARSH_TAME",       "Emotion Lock Harsh",
+        juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.3f));
+    layout.add (std::make_unique<Float>  ("EMOTION_LOCK_POCKET_LOCK",      "Emotion Lock Pocket",
+        juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.4f));
+    layout.add (std::make_unique<Float>  ("EMOTION_LOCK_INTENSITY",        "Emotion Lock Intensity",
+        juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.5f));
+
     return layout;
 }
 
@@ -200,6 +248,7 @@ void StadiumAuraAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, 
     outputLeftMeter.store (peakForChannel (buffer, 0), std::memory_order_relaxed);
     outputRightMeter.store (peakForChannel (buffer, juce::jmin (1, buffer.getNumChannels() - 1)), std::memory_order_relaxed);
     gainReductionMeter.store (-auraProcessor.getGainReductionDb(), std::memory_order_relaxed);
+    newCompGainReduction.store (auraProcessor.getNewCompressorGainReductionDb(), std::memory_order_relaxed);
     limiterReductionMeter.store (-auraProcessor.getLimiterReductionDb(), std::memory_order_relaxed);
     tubeActivityMeter.store (auraProcessor.getTubeActivity(), std::memory_order_relaxed);
     updateAnalyzer (buffer);
@@ -281,6 +330,34 @@ AuraParameters StadiumAuraAudioProcessor::readParameters() const noexcept
         s.attackMs        = apvts.getRawParameterValue (pfx + "ATTACK")->load();
         s.releaseMs       = apvts.getRawParameterValue (pfx + "RELEASE")->load();
     }
+
+    // ── New compressor engine params ─────────────────────────────────────────────
+    p.compressorParams.enabled      = get ("COMP_ENABLED") > 0.5f;
+    p.compressorParams.model        = static_cast<AuraCompressorModel> (juce::jlimit (0, 5, static_cast<int> (get ("COMP_MODEL"))));
+    p.compressorParams.inputDb      = get ("COMP_INPUT");
+    p.compressorParams.thresholdDb  = get ("COMP_THRESHOLD");
+    p.compressorParams.amount       = get ("COMP_AMOUNT") * 0.01f;
+    p.compressorParams.ratio        = get ("COMP_RATIO");
+    p.compressorParams.attackMs     = get ("COMP_ATTACK");
+    p.compressorParams.releaseMs    = get ("COMP_RELEASE");
+    p.compressorParams.makeupDb     = get ("COMP_MAKEUP");
+    p.compressorParams.mix          = get ("COMP_MIX") * 0.01f;
+    p.compressorParams.sidechainHPF = get ("COMP_SIDECHAIN_HPF");
+    p.compressorParams.autoGain     = get ("COMP_AUTO_GAIN") > 0.5f;
+    p.compressorParams.auraLevel    = get ("COMP_AURA_LEVEL") > 0.5f;
+    p.compressorParams.detectorMode = static_cast<CompressorParams::DetectorMode> (
+        juce::jlimit (0, 4, static_cast<int> (get ("COMP_DETECTOR_MODE"))));
+    p.compressorParams.linkedStereo = get ("COMP_LINK") > 0.5f;
+    p.compressorParams.saturation   = get ("COMP_SATURATION") * 0.01f;
+
+    p.compressorParams.emotionLock.enabled         = get ("EMOTION_LOCK_ENABLED") > 0.5f;
+    p.compressorParams.emotionLock.amount          = get ("EMOTION_LOCK_AMOUNT");
+    p.compressorParams.emotionLock.breathProtect   = get ("EMOTION_LOCK_BREATH_PROTECT");
+    p.compressorParams.emotionLock.presenceProtect = get ("EMOTION_LOCK_PRESENCE_PROTECT");
+    p.compressorParams.emotionLock.airProtect      = get ("EMOTION_LOCK_AIR_PROTECT");
+    p.compressorParams.emotionLock.harshTame       = get ("EMOTION_LOCK_HARSH_TAME");
+    p.compressorParams.emotionLock.pocketLock      = get ("EMOTION_LOCK_POCKET_LOCK");
+    p.compressorParams.emotionLock.intensity       = get ("EMOTION_LOCK_INTENSITY");
 
     return p;
 }

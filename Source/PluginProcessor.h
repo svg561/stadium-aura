@@ -50,6 +50,7 @@ public:
     std::atomic<float> gainReductionMeter { 0.0f };
     std::atomic<float> limiterReductionMeter { 0.0f };
     std::atomic<float> tubeActivityMeter { 0.0f };
+    std::atomic<float> newCompGainReduction { 0.0f };
 
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     AnalyzerSnapshot getAnalyzerSnapshot() const noexcept;

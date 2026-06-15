@@ -113,6 +113,19 @@ private:
     SegmentedChoiceBar trackButtons;
     SegmentedChoiceBar compModeButtons;
     SegmentedChoiceBar qualityBar;
+    SegmentedChoiceBar compModelBar;
+
+    // New compressor input/sidechain knobs
+    PremiumKnob compInputKnob    { "INPUT",  0.0,  " dB" };
+    PremiumKnob compSidechainKnob { "HPF",   90.0, " Hz" };
+
+    // Emotion Lock controls
+    juce::ToggleButton emotionLockBtn { "EMOTION LOCK" };
+    juce::Label        emotionLockStatusLabel;
+
+    // Aura Level controls
+    juce::ToggleButton auraLevelBtn { "AURA LEVEL" };
+    juce::Label        auraLevelStateLabel;
 
     std::vector<std::unique_ptr<SliderAttachment>> sliderAttachments;
     std::vector<std::unique_ptr<ButtonAttachment>> buttonAttachments;
