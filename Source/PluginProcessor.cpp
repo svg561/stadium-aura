@@ -5,7 +5,7 @@
 
 // Set to true to bypass all DSP and pass mic input directly to output.
 // Flip to false once standalone audio I/O is confirmed working.
-static constexpr bool FORCE_RAW_PASSTHROUGH = true;
+static constexpr bool FORCE_RAW_PASSTHROUGH = false;
 
 namespace Param
 {
