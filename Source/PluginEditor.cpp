@@ -1,4 +1,5 @@
 #include "PluginEditor.h"
+#include "dsp/AuraCompressorEngine.h"
 #include "ui/RackDrawing.h"
 #include "ui/StandaloneAudio.h"
 
@@ -62,20 +63,21 @@ StadiumAuraAudioProcessorEditor::StadiumAuraAudioProcessorEditor (StadiumAuraAud
         { &transformer, "transformer" }, { &summing, "summing" }, { &glue, "glue" },
         { &correction, "micCorrectionAmount" }, { &targetAmount, "micTargetAmount" }, { &badFreq, "badFrequencyTamer" },
         { &preampDrive, "preampDrive" }, { &aura, "aura" },
-        // Compressor knobs re-wired to new COMP_* params (new engine)
-        { &compAmount,  "COMP_AMOUNT"   }, { &compMakeup, "COMP_MAKEUP"    },
-        { &attack,      "COMP_ATTACK"   }, { &release,    "COMP_RELEASE"   },
-        { &threshold,   "COMP_THRESHOLD"}, { &ratio,      "COMP_RATIO"     },
-        { &bleed,       "compBleedPercent" },  // legacy bleed kept on old param
+        { &compInputKnob,   "COMP_INPUT"     }, { &threshold,   "COMP_THRESHOLD" },
+        { &ratio,           "COMP_RATIO"     }, { &attack,      "COMP_ATTACK"    },
+        { &release,         "COMP_RELEASE"   }, { &compMixKnob, "COMP_MIX"       },
+        { &compDriveKnob,   "COMP_DRIVE"     }, { &compOutputKnob, "COMP_MAKEUP" },
+        { &compDensityKnob, "COMP_DENSITY"   }, { &compWarmthKnob, "COMP_WARMTH" },
+        { &compAmount,      "COMP_AMOUNT"    },
+        { &bleed,       "compBleedPercent" },
         { &mix, "mix" }, { &width, "width" }, { &ceiling, "ceiling" },
-        // New knobs
-        { &compInputKnob,     "COMP_INPUT"        },
-        { &compSidechainKnob, "COMP_SIDECHAIN_HPF"}
+        { &compSidechainKnob, "COMP_SIDECHAIN_HPF" }
     };
     for (auto [slider, id] : sliders) attachSlider (*slider, id);
 
     attachButton (hardwareSafe, "hardwareSafeMode");
-    attachButton (compressorEnable, "COMP_ENABLED");  // re-wired to new engine
+    attachButton (compressorEnable, "COMP_ENABLED");
+    attachButton (compBypassBtn, "COMP_BYPASS");
     attachButton (limiter, "limiter");
     attachButton (bypass, "bypass");
     attachButton (mono, "monoCheck");
@@ -92,6 +94,8 @@ StadiumAuraAudioProcessorEditor::StadiumAuraAudioProcessorEditor (StadiumAuraAud
     attachCombo (tubeType, "tubeType", { "Clean Triode", "Warm Triode", "Hot Triode", "Vintage Pentode", "Big Bottle", "Cream Opto Tube" });
     attachCombo (vuMode, "vuMeterMode", { "Input", "Gain Reduction", "Output" });
     attachCombo (consoleMode, "consoleMode", { "Clean Console", "Vintage Desk", "Modern Punch", "Tube Console" });
+    attachCombo (compTimingMode, "COMP_TIMING_MODE", { "Fixed", "Manual", "Hybrid" });
+    attachCombo (compScHpfMode, "COMP_SC_HPF_MODE", { "Off", "80 Hz", "150 Hz", "220 Hz" });
 
     for (auto* c : { static_cast<juce::Component*> (&inputRms), static_cast<juce::Component*> (&outputRms),
                      static_cast<juce::Component*> (&inputLrMeter), static_cast<juce::Component*> (&outputLrMeter),
@@ -99,8 +103,17 @@ StadiumAuraAudioProcessorEditor::StadiumAuraAudioProcessorEditor (StadiumAuraAud
                      static_cast<juce::Component*> (&vuMeter), static_cast<juce::Component*> (&tubeChamber),
                      static_cast<juce::Component*> (&eqDisplay), static_cast<juce::Component*> (&trackButtons),
                      static_cast<juce::Component*> (&compModeButtons), static_cast<juce::Component*> (&qualityBar),
-                     static_cast<juce::Component*> (&compModelBar) })
+                     static_cast<juce::Component*> (&compModelBar), static_cast<juce::Component*> (&compProfileBar),
+                     static_cast<juce::Component*> (&compGrMeter) })
         addAndMakeVisible (*c);
+
+    addAndMakeVisible (compBypassBtn);
+    addAndMakeVisible (compTimingMode);
+    addAndMakeVisible (compScHpfMode);
+    compTargetGrLabel.setFont (juce::FontOptions (9.0f, juce::Font::bold));
+    compTargetGrLabel.setColour (juce::Label::textColourId, juce::Colour (0xff8d806c));
+    compTargetGrLabel.setJustificationType (juce::Justification::centredLeft);
+    addAndMakeVisible (compTargetGrLabel);
 
     for (auto* label : { &emotionLockStatusLabel, &auraLevelStateLabel })
     {
@@ -132,9 +145,19 @@ StadiumAuraAudioProcessorEditor::StadiumAuraAudioProcessorEditor (StadiumAuraAud
     compModeButtons.setSelectedIndex (1, juce::dontSendNotification);
     compModeButtons.onChange = [this] (int index) { setChoiceParameter ("compressorMode", index); };
 
-    compModelBar.setChoices ({ "Lightning FET", "Velvet Opto", "Crown Mu", "Punch Cell", "Glue Bus", "Modern Clean" });
-    compModelBar.setSelectedIndex (1, juce::dontSendNotification);
-    compModelBar.onChange = [this] (int i) { setChoiceParameter ("COMP_MODEL", i); };
+    compModelBar.setChoices ({ "Aura 2A", "Aura 76", "Aura Tube", "Aura Limiter", "Aura Density", "Aura Drums" });
+    compModelBar.setSelectedIndex (0, juce::dontSendNotification);
+    compModelBar.onChange = [this] (int i)
+    {
+        setChoiceParameter ("COMP_MODEL", i);
+        refreshCompressorProfileBar();
+        updateCompressorControlVisibility();
+    };
+
+    compProfileBar.setSelectedIndex (0, juce::dontSendNotification);
+    compProfileBar.onChange = [this] (int i) { setChoiceParameter ("COMP_PROFILE", i); };
+    refreshCompressorProfileBar();
+    updateCompressorControlVisibility();
 
     qualityBar.setChoices ({ "ECO", "NORMAL", "HIGH", "ULTRA" });
     qualityBar.setSelectedIndex (2, juce::dontSendNotification);
@@ -243,6 +266,32 @@ void StadiumAuraAudioProcessorEditor::attachCombo (juce::ComboBox& combo, const 
     combo.addItemList (items, 1);
     addAndMakeVisible (combo);
     comboAttachments.push_back (std::make_unique<ComboAttachment> (processorRef.apvts, id, combo));
+}
+
+void StadiumAuraAudioProcessorEditor::refreshCompressorProfileBar()
+{
+    const auto modelIndex = juce::jlimit (0, 5, static_cast<int> (processorRef.apvts.getRawParameterValue ("COMP_MODEL")->load()));
+    const auto model = static_cast<AuraCompressorModel> (modelIndex);
+    const int count = getAuraCompressorProfileCount (model);
+    juce::StringArray names;
+    for (int i = 0; i < count; ++i)
+        names.add (getAuraCompressorProfileName (model, i));
+    compProfileBar.setChoices (names);
+    const int profileIndex = juce::jlimit (0, juce::jmax (0, count - 1),
+                                           static_cast<int> (processorRef.apvts.getRawParameterValue ("COMP_PROFILE")->load()));
+    compProfileBar.setSelectedIndex (profileIndex, juce::dontSendNotification);
+}
+
+void StadiumAuraAudioProcessorEditor::updateCompressorControlVisibility()
+{
+    const auto modelIndex = juce::jlimit (0, 5, static_cast<int> (processorRef.apvts.getRawParameterValue ("COMP_MODEL")->load()));
+    const auto model = static_cast<AuraCompressorModel> (modelIndex);
+    compTimingMode.setVisible (model == AuraCompressorModel::AuraTube);
+    compScHpfMode.setVisible (model == AuraCompressorModel::AuraTube || model == AuraCompressorModel::AuraDrums);
+    compWarmthKnob.setVisible (model == AuraCompressorModel::Aura2A || model == AuraCompressorModel::AuraDensity);
+    compDensityKnob.setVisible (model == AuraCompressorModel::AuraDensity);
+    compDriveKnob.setVisible (model != AuraCompressorModel::AuraLimiter);
+    compAmount.setVisible (model == AuraCompressorModel::Aura2A);
 }
 
 void StadiumAuraAudioProcessorEditor::layoutKnobRow (juce::Rectangle<int>& area, std::initializer_list<juce::Slider*> knobs)
@@ -551,45 +600,51 @@ void StadiumAuraAudioProcessorEditor::resized()
     {
         auto ra = right.reduced (kPanelPadding, kPanelTop);
 
-        // Compressor model selector tabs + mode bar
-        compModelBar.setBounds    (ra.removeFromTop (28));
+        auto bypassRow = ra.removeFromTop (kBtnH);
+        compBypassBtn.setBounds (bypassRow.removeFromRight (72).reduced (2));
+        compressorEnable.setBounds (bypassRow.removeFromRight (72).reduced (2));
+
+        compModelBar.setBounds (ra.removeFromTop (28));
         ra.removeFromTop (kGap);
-        compModeButtons.setBounds (ra.removeFromTop (22));
+        compProfileBar.setBounds (ra.removeFromTop (24));
         ra.removeFromTop (kGap);
 
-        // Right sub-column: VU meter + feature toggles
-        auto vuArea = ra.removeFromRight (juce::roundToInt (ra.getWidth() * 0.42f));
-        vuMode.setBounds           (vuArea.removeFromBottom (22).reduced (2));
-        compressorEnable.setBounds (vuArea.removeFromBottom (24).reduced (2));
-        {
-            auto elRow = vuArea.removeFromBottom (22);
-            emotionLockBtn.setBounds (elRow.removeFromLeft (elRow.getWidth() / 2).reduced (2));
-            auraLevelBtn.setBounds   (elRow.reduced (2));
-        }
-        {
-            auto elLRow = vuArea.removeFromBottom (16);
-            emotionLockStatusLabel.setBounds (elLRow.removeFromLeft (elLRow.getWidth() / 2).reduced (2));
-            auraLevelStateLabel.setBounds    (elLRow.reduced (2));
-        }
-        vuMeter.setBounds (vuArea.reduced (2));
+        auto optionRow = ra.removeFromTop (kDropdownH);
+        compTimingMode.setBounds (optionRow.removeFromLeft (optionRow.getWidth() / 2).reduced (2, 0));
+        compScHpfMode.setBounds  (optionRow.reduced (2, 0));
 
-        // Compressor knob rows — cell height from available space (4 rows + output)
-        const int compKH = juce::jmax (56, juce::jmin (88, (ra.getHeight() - 60) / 4));
+        ra.removeFromTop (kGap);
+        compGrMeter.setBounds (ra.removeFromTop (22).reduced (2, 0));
+        compTargetGrLabel.setBounds (ra.removeFromTop (14).reduced (2, 0));
+        ra.removeFromTop (kGap);
 
+        const int compKH = juce::jmax (56, juce::jmin (80, (ra.getHeight() - 80) / 4));
         auto cr1 = ra.removeFromTop (compKH);
-        layoutKnobRow (cr1, { &compAmount, &compMakeup, &attack, &release });
+        layoutKnobGrid (cr1, 2, { &compInputKnob, &threshold });
         ra.removeFromTop (kGap);
-
         auto cr2 = ra.removeFromTop (compKH);
-        layoutKnobRow (cr2, { &threshold, &ratio, &compInputKnob, &compSidechainKnob });
-        ra.removeFromTop (kGap * 2);
+        layoutKnobGrid (cr2, 2, { &ratio, &attack });
+        ra.removeFromTop (kGap);
+        auto cr3 = ra.removeFromTop (compKH);
+        layoutKnobGrid (cr3, 2, { &release, &compMixKnob });
+        ra.removeFromTop (kGap);
+        auto cr4 = ra.removeFromTop (compKH);
+        layoutKnobGrid (cr4, 2, { &compDriveKnob, &compOutputKnob });
 
-        auto outRow = ra.removeFromTop (compKH);
-        layoutKnobRow (outRow, { &mix, &width });
+        compDensityKnob.setBounds (cr4.withWidth (0)); // placed via visibility; reuse row when visible
+        compWarmthKnob.setBounds ({});
+        compAmount.setBounds ({});
+        compMakeup.setBounds ({});
+        compSidechainKnob.setBounds ({});
+        compModeButtons.setBounds ({});
+        bleed.setBounds ({});
+        vuMeter.setBounds ({});
+        vuMode.setBounds ({});
+        emotionLockBtn.setBounds ({});
+        auraLevelBtn.setBounds ({});
+        emotionLockStatusLabel.setBounds ({});
+        auraLevelStateLabel.setBounds ({});
 
-        bleed.setBounds ({});   // legacy bleed knob — hidden
-
-        // Output section: OUTPUT knob + CEILING knob side by side
         if (ra.getHeight() >= 48)
         {
             const int oKH   = juce::jmin (compKH, ra.getHeight() - 4);
@@ -598,7 +653,10 @@ void StadiumAuraAudioProcessorEditor::resized()
             outputKnob.setBounds (oArea.removeFromLeft (oArea.getWidth() / 2)
                                        .withSizeKeepingCentre (oSize, oSize));
             ceiling.setBounds    (oArea.withSizeKeepingCentre (oSize, oSize));
+            width.setBounds (ra.removeFromTop (oKH).withSizeKeepingCentre (oSize, oSize));
         }
+
+        updateCompressorControlVisibility();
     }
 
     // ── EQ STRIP ─────────────────────────────────────────────────────────────
@@ -745,7 +803,18 @@ void StadiumAuraAudioProcessorEditor::timerCallback()
     compModeButtons.setSelectedIndex (compIndex, juce::dontSendNotification);
 
     const auto newCompIndex = juce::jlimit (0, 5, static_cast<int> (processorRef.apvts.getRawParameterValue ("COMP_MODEL")->load()));
-    compModelBar.setSelectedIndex (newCompIndex, juce::dontSendNotification);
+    if (compModelBar.getSelectedIndex() != newCompIndex)
+    {
+        compModelBar.setSelectedIndex (newCompIndex, juce::dontSendNotification);
+        refreshCompressorProfileBar();
+        updateCompressorControlVisibility();
+    }
+
+    const auto modelIndex = juce::jlimit (0, 5, static_cast<int> (processorRef.apvts.getRawParameterValue ("COMP_MODEL")->load()));
+    const int maxProfile = juce::jmax (0, getAuraCompressorProfileCount (static_cast<AuraCompressorModel> (modelIndex)) - 1);
+    const auto profileIndex = juce::jlimit (0, maxProfile,
+                                            static_cast<int> (processorRef.apvts.getRawParameterValue ("COMP_PROFILE")->load()));
+    compProfileBar.setSelectedIndex (profileIndex, juce::dontSendNotification);
 
     // Emotion Lock and Aura Level visual feedback
     const bool elEnabled = processorRef.apvts.getRawParameterValue ("EMOTION_LOCK_ENABLED")->load() > 0.5f;
@@ -761,7 +830,18 @@ void StadiumAuraAudioProcessorEditor::timerCallback()
     if (newEngineOn)
     {
         const float newGr = processorRef.newCompGainReduction.load (std::memory_order_relaxed);
-        grMeter.setTargetDb (newGr);
+        const float grDisplay = juce::jlimit (0.0f, 20.0f, std::abs (newGr));
+        grMeter.setTargetDb (grDisplay);
+        compGrMeter.setTargetDb (grDisplay);
+        grHorizontalMeter.setTargetDb (-grDisplay);
+        const float targetGr = processorRef.newCompTargetGr.load (std::memory_order_relaxed);
+        compTargetGrLabel.setText ("Target GR guide: " + juce::String (targetGr, 1) + " dB",
+                                   juce::dontSendNotification);
+    }
+    else
+    {
+        compGrMeter.setTargetDb (gr);
+        compTargetGrLabel.setText ("Target GR guide: —", juce::dontSendNotification);
     }
 
     const auto latencyMs = processorRef.getLatencySamples() * 1000.0 / processorRef.getSampleRate();

@@ -419,7 +419,7 @@ void AuraProcessor::process (juce::AudioBuffer<float>& buffer, const AuraParamet
             buffer.setSample (1, sample, juce::jmap (wetMix, dryRight, wetRight));
     }
 
-    // New compressor engine — runs after analog colour, before digital EQ
+    // Stadium Aura compressor — runs after analog colour, before digital EQ
     if (p.compressorParams.enabled)
     {
         compressorEngine.updateParameters (p.compressorParams);

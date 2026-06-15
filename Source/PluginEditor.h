@@ -37,6 +37,8 @@ private:
     void updateEqDisplayState();
     void captureAbState (int slot);
     void restoreAbState (int slot);
+    void refreshCompressorProfileBar();
+    void updateCompressorControlVisibility();
     void layoutKnobRow (juce::Rectangle<int>& area, std::initializer_list<juce::Slider*> knobs);
     void layoutKnobGrid (juce::Rectangle<int>& area, int columns, std::initializer_list<juce::Slider*> knobs);
 
@@ -115,8 +117,21 @@ private:
     SegmentedChoiceBar compModeButtons;
     SegmentedChoiceBar qualityBar;
     SegmentedChoiceBar compModelBar;
+    SegmentedChoiceBar compProfileBar;
 
-    // New compressor input/sidechain knobs
+    juce::ToggleButton compBypassBtn { "BYPASS" };
+    juce::ComboBox compTimingMode;
+    juce::ComboBox compScHpfMode;
+
+    PremiumKnob compMixKnob     { "MIX",  100.0, " %" };
+    PremiumKnob compDriveKnob   { "DRIVE", 0.0,  " %" };
+    PremiumKnob compDensityKnob { "DENS",  0.0,  " %" };
+    PremiumKnob compWarmthKnob  { "WARM",  0.0,  " %" };
+    PremiumKnob compOutputKnob  { "OUT",   0.0,  " dB" };
+    HorizontalReductionMeter compGrMeter { "COMP GR" };
+    juce::Label compTargetGrLabel;
+
+    // Legacy / auxiliary compressor controls
     PremiumKnob compInputKnob    { "INPUT",  0.0,  " dB" };
     PremiumKnob compSidechainKnob { "HPF",   90.0, " Hz" };
 

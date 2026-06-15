@@ -94,6 +94,7 @@ public:
     float getTubeActivity() const noexcept { return tubeActivity; }
     int   getLatencySamples() const noexcept { return limiter.getLatencySamples(); }
     float getNewCompressorGainReductionDb() const noexcept { return compressorEngine.getGainReductionDb(); }
+    float getNewCompressorTargetGrDb() const noexcept { return compressorEngine.getTargetGrDb(); }
 
 private:
     struct MacroValues
