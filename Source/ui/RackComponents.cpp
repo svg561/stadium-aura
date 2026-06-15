@@ -197,9 +197,11 @@ void VuMeterComponent::paint (juce::Graphics& g)
 
     // Label
     g.setColour (juce::Colour (0xff2a1c10));
-    g.setFont (juce::FontOptions (8.0f, juce::Font::bold));
-    g.drawText (mode == Mode::gainReduction ? "GR" : (mode == Mode::input ? "IN" : "OUT"),
-                labelStrip.toNearestInt(), juce::Justification::centred);
+    g.setFont (juce::FontOptions (7.5f, juce::Font::bold));
+    const char* vuLabel = (mode == Mode::gainReduction) ? "GAIN REDUCTION"
+                        : (mode == Mode::input)         ? "INPUT VU"
+                                                        : "OUTPUT VU";
+    g.drawText (vuLabel, labelStrip.toNearestInt(), juce::Justification::centred);
 }
 
 void TubeChamberComponent::paint (juce::Graphics& g)
@@ -245,9 +247,17 @@ void TubeChamberComponent::paint (juce::Graphics& g)
             g.fillEllipse (tube.expanded (10.0f, 8.0f));
         }
 
-        // Tube glass body — tall capsule: corner radius much smaller than width
+        // Tube glass body — color driven by distortionLevel + activity
+        juce::Colour tubeBaseColour;
+        if (distortionLevel > 0.5f)
+            tubeBaseColour = juce::Colour (0xffff2a14).interpolatedWith (juce::Colour (0xffff8c14), 1.0f - distortionLevel);
+        else if (activity > 0.7f)
+            tubeBaseColour = juce::Colour (0xffff8c14);
+        else
+            tubeBaseColour = juce::Colour (0xffff9f3a).withAlpha (0.4f + activity * 0.6f);
+
         juce::ColourGradient tubeGrad (
-            juce::Colour::fromFloatRGBA (0.98f, 0.58f + activity * 0.20f, 0.10f, alpha),
+            tubeBaseColour.withAlpha (alpha),
             tube.getCentreX(), tube.getBottom(),
             juce::Colour::fromFloatRGBA (0.15f, 0.10f, 0.04f, alpha * 0.7f),
             tube.getCentreX(), tube.getY(), false);
@@ -598,4 +608,150 @@ void SegmentedChoiceBar::paint (juce::Graphics& g)
         g.setFont (juce::FontOptions (9.0f, juce::Font::bold));
         g.drawFittedText (choices[i], seg.toNearestInt(), juce::Justification::centred, 1);
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AuraHorizontalVUMeter
+// ─────────────────────────────────────────────────────────────────────────────
+
+AuraHorizontalVUMeter::AuraHorizontalVUMeter (MeterMode m) : mode (m)
+{
+    startTimerHz (30);
+}
+
+void AuraHorizontalVUMeter::setMode (MeterMode newMode) noexcept
+{
+    mode = newMode;
+    repaint();
+}
+
+void AuraHorizontalVUMeter::setTargetDb (float db) noexcept
+{
+    targetDb = db;
+}
+
+void AuraHorizontalVUMeter::setSaturation (float amount) noexcept
+{
+    targetSat = juce::jlimit (0.0f, 1.0f, amount);
+}
+
+void AuraHorizontalVUMeter::setDistortionWarning (bool warning) noexcept
+{
+    if (distortionWarning != warning)
+    {
+        distortionWarning = warning;
+        repaint();
+    }
+}
+
+void AuraHorizontalVUMeter::timerCallback()
+{
+    const auto dbAlpha  = (targetDb  > displayedDb)  ? 0.32f : 0.08f;
+    const auto satAlpha = (targetSat > displayedSat) ? 0.28f : 0.06f;
+    displayedDb  += (targetDb  - displayedDb)  * dbAlpha;
+    displayedSat += (targetSat - displayedSat) * satAlpha;
+    repaint();
+}
+
+void AuraHorizontalVUMeter::paint (juce::Graphics& g)
+{
+    auto b = getLocalBounds().toFloat().reduced (2.0f);
+    RackDrawing::paintInsetDisplay (g, b);
+
+    auto labelStrip = b.removeFromBottom (14.0f);
+    const auto faceFull = b.reduced (3.0f, 3.0f);   // geometry reference — never mutated
+    auto face = faceFull;
+
+    // Cream / parchment face
+    juce::ColourGradient paper (juce::Colour (0xffffe8c8), face.getX(), face.getY(),
+                                juce::Colour (0xffe0c090), face.getX(), face.getBottom(), false);
+    g.setGradientFill (paper);
+    g.fillRoundedRectangle (face, 4.0f);
+
+    // Red zone — right 15 %
+    {
+        auto redZone = face;
+        redZone.removeFromLeft (face.getWidth() * 0.85f);
+        g.setColour (juce::Colour (0x55cc2010));
+        g.fillRoundedRectangle (redZone.reduced (0.0f, 2.0f), 3.0f);
+    }
+
+    // Glass reflection strip across the top
+    {
+        auto shine = face;
+        shine.removeFromBottom (face.getHeight() * 0.65f);
+        g.setColour (juce::Colour (0x18ffffff));
+        g.fillRoundedRectangle (shine, 3.0f);
+    }
+
+    // Gold frame — bright red when distortion warning
+    g.setColour (distortionWarning ? juce::Colour (0xffff3020) : juce::Colour (0xffc9a050));
+    g.drawRoundedRectangle (b.reduced (0.5f), 4.0f, distortionWarning ? 2.0f : 1.2f);
+
+    // ── Needle geometry ───────────────────────────────────────────────────────
+    // Pivot sits below the face; radius sized so the arc fills the width nicely
+    const auto radius  = juce::jmin (faceFull.getWidth() * 0.50f, faceFull.getHeight() * 3.0f);
+    const auto centre  = juce::Point<float> (faceFull.getCentreX(), faceFull.getBottom() + radius * 0.18f);
+    constexpr float kStartA = -1.05f;
+    constexpr float kEndA   =  1.05f;
+
+    // Tick marks along the arc
+    const int numTicks = (mode == MeterMode::GainReduction) ? 10 : 12;
+    g.setFont (juce::FontOptions (6.5f));
+    for (int i = 0; i <= numTicks; ++i)
+    {
+        const float tickA   = juce::jmap (static_cast<float> (i), 0.0f, static_cast<float> (numTicks), kStartA, kEndA);
+        const bool  major   = (i % (numTicks > 4 ? numTicks / 4 : 1) == 0);
+        const float tickLen = major ? 8.0f : 4.5f;
+        const auto  inner   = centre + juce::Point<float> (std::sin (tickA), -std::cos (tickA)) * (radius - tickLen);
+        const auto  outer   = centre + juce::Point<float> (std::sin (tickA), -std::cos (tickA)) * radius;
+        const bool  inRed   = (i >= numTicks * 8 / 10);
+        g.setColour (inRed ? juce::Colour (0xffcc2010) : juce::Colour (0xff4a3018));
+        g.drawLine ({ inner, outer }, major ? 1.4f : 0.7f);
+    }
+
+    // Normalise displayedDb to 0..1
+    float normVal;
+    if (mode == MeterMode::GainReduction)
+        normVal = juce::jlimit (0.0f, 1.0f, displayedDb / 20.0f);
+    else
+        normVal = juce::jlimit (0.0f, 1.0f, juce::jmap (displayedDb, -40.0f, 3.0f, 0.0f, 1.0f));
+
+    // Needle
+    const float needleA = juce::jmap (normVal, 0.0f, 1.0f, kStartA, kEndA);
+    const auto  needleTip = centre + juce::Point<float> (std::sin (needleA), -std::cos (needleA)) * (radius - 5.0f);
+
+    g.setColour (juce::Colour (0x88000000));
+    g.drawLine ({ centre.translated (1.0f, 1.0f), needleTip.translated (1.0f, 1.0f) }, 1.4f);
+    g.setColour (juce::Colour (0xff6a1208));
+    g.drawLine ({ centre, needleTip }, 1.2f);
+
+    // Pivot cap
+    g.setColour (juce::Colour (0xff1a1008));
+    g.fillEllipse (centre.x - 4.0f, centre.y - 4.0f, 8.0f, 8.0f);
+    g.setColour (juce::Colour (0xffc9a050));
+    g.drawEllipse (centre.x - 3.5f, centre.y - 3.5f, 7.0f, 7.0f, 0.8f);
+
+    // Saturation tint (GR meter only)
+    if (mode == MeterMode::GainReduction && displayedSat > 0.05f)
+    {
+        auto satBar = faceFull;
+        satBar.removeFromLeft (faceFull.getWidth() * (1.0f - displayedSat * 0.35f));
+        g.setColour (juce::Colour::fromFloatRGBA (1.0f, 0.5f, 0.0f, 0.28f * displayedSat));
+        g.fillRoundedRectangle (satBar.reduced (0.0f, 3.0f), 2.0f);
+    }
+
+    // Label
+    const char* labelText;
+    switch (mode)
+    {
+        case MeterMode::Input:          labelText = "INPUT VU";        break;
+        case MeterMode::Output:         labelText = "OUTPUT VU";       break;
+        case MeterMode::GainReduction:  labelText = "GAIN REDUCTION";  break;
+        case MeterMode::Saturation:     labelText = "SATURATION";      break;
+        default:                        labelText = "VU";              break;
+    }
+    g.setColour (juce::Colour (0xff2a1c10));
+    g.setFont (juce::FontOptions (7.5f, juce::Font::bold));
+    g.drawText (labelText, labelStrip.toNearestInt(), juce::Justification::centred);
 }

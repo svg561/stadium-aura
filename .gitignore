@@ -1,0 +1,6 @@
+build/
+.tools/
+third_party/AAX_SDK/
+.DS_Store
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
