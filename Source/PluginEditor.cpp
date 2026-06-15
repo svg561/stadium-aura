@@ -120,6 +120,26 @@ StadiumAuraAudioProcessorEditor::StadiumAuraAudioProcessorEditor (StadiumAuraAud
     };
     eqDisplay.bindToParameters (processorRef.apvts);
 
+    // Compact strip click opens the expanded AURA EQ overlay
+    eqDisplay.onEmptyAreaClicked = [this]
+    {
+        if (expandedEQPanel != nullptr)
+        {
+            expandedEQPanel->setVisible (true);
+            expandedEQPanel->toFront (false);
+            resized();
+        }
+    };
+
+    // Create and add the expanded EQ panel (initially hidden)
+    expandedEQPanel = std::make_unique<ExpandedEQPanel> (processorRef);
+    addChildComponent (*expandedEQPanel);
+    expandedEQPanel->onClose = [this]
+    {
+        expandedEQPanel->setVisible (false);
+        resized();
+    };
+
     const char* routeTips[] {
         "Mic: Source Match + character. Right-click toggles mic DSP bypass.",
         "Pre: Preamp architecture. Right-click toggles preamp bypass.",
@@ -534,6 +554,13 @@ void StadiumAuraAudioProcessorEditor::resized()
     outputFader.setBounds   (footer.removeFromRight (130).reduced (4, 2));
 
     eqDisplay.toFront (false);
+
+    // Expanded AURA EQ overlay covers almost the entire editor
+    if (expandedEQPanel != nullptr && expandedEQPanel->isVisible())
+    {
+        expandedEQPanel->setBounds (getLocalBounds().reduced (18, 14));
+        expandedEQPanel->toFront (false);
+    }
 }
 
 void StadiumAuraAudioProcessorEditor::timerCallback()
@@ -566,6 +593,10 @@ void StadiumAuraAudioProcessorEditor::timerCallback()
     const auto drive = processorRef.apvts.getRawParameterValue ("tubeDrive")->load();
     tubeChamber.setActivity (juce::jlimit (0.0f, 1.0f, tubeLevel * 0.72f + drive * 0.0028f));
     updateEqDisplayState();
+
+    // Refresh the expanded EQ panel when visible (30 Hz is sufficient for visual)
+    if (expandedEQPanel != nullptr && expandedEQPanel->isVisible())
+        expandedEQPanel->refreshFromParameters();
 
     presetCard.setText (processorRef.getProgramName (processorRef.getCurrentProgram()), juce::dontSendNotification);
 

@@ -55,6 +55,7 @@ target_sources(StadiumAura PRIVATE
     Source/dsp/CompressorSection.cpp
     Source/dsp/SafetyLimiter.cpp
     Source/ui/EQPanel.cpp
+    Source/ui/ExpandedEQPanel.cpp
     Source/ui/PremiumLookAndFeel.cpp
     Source/ui/PremiumKnob.cpp
     Source/ui/PremiumFader.cpp
