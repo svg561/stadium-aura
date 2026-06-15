@@ -61,9 +61,11 @@ class TubeChamberComponent final : public juce::Component
 {
 public:
     void setActivity (float value) noexcept { activity = juce::jlimit (0.0f, 1.0f, value); repaint(); }
+    void setDistortionLevel (float level) noexcept { distortionLevel = juce::jlimit (0.0f, 1.0f, level); }
     void paint (juce::Graphics&) override;
 private:
     float activity = 0.0f;
+    float distortionLevel = 0.0f;
 };
 
 class EqSpectrumComponent final : public juce::Component
@@ -165,4 +167,22 @@ public:
 private:
     juce::StringArray choices;
     int selectedIndex = 0;
+};
+
+class AuraHorizontalVUMeter final : public juce::Component, private juce::Timer
+{
+public:
+    enum class MeterMode { Input, Output, GainReduction, Saturation };
+    explicit AuraHorizontalVUMeter (MeterMode m = MeterMode::Output);
+    void setMode (MeterMode newMode) noexcept;
+    void setTargetDb (float db) noexcept;
+    void setSaturation (float amount) noexcept;
+    void setDistortionWarning (bool warning) noexcept;
+    void paint (juce::Graphics&) override;
+private:
+    void timerCallback() override;
+    MeterMode mode;
+    float targetDb = -60.0f, displayedDb = -60.0f;
+    float targetSat = 0.0f,  displayedSat = 0.0f;
+    bool  distortionWarning = false;
 };
