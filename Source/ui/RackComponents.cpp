@@ -142,7 +142,7 @@ void VuMeterComponent::paint (juce::Graphics& g)
 
     // Reserve label area at the bottom, then draw the face above it
     auto labelStrip = b.removeFromBottom (16.0f);
-    auto face = b.reduced (4.0f, 4.0f);
+    auto face = b.reduced (4.0f, 4.0f);   // face sits above the label strip
 
     juce::ColourGradient paper (juce::Colour (0xffffe8b8), face.getX(), face.getY(),
                                 juce::Colour (0xff9a6a30), face.getX(), face.getBottom(), false);
@@ -154,9 +154,9 @@ void VuMeterComponent::paint (juce::Graphics& g)
     g.fillRoundedRectangle (face.removeFromRight (face.getWidth() * 0.18f).reduced (0.0f, 4.0f), 3.0f);
     face = b.reduced (4.0f, 4.0f);   // restore face
 
-    // Pivot: 15 px above the bottom of the face so it always stays inside
+    // Pivot: 14 px above the bottom of the face so the needle sweeps upward into the meter face
     const auto radius = juce::jmin (face.getWidth(), face.getHeight() * 1.3f) * 0.46f;
-    const auto centre = juce::Point<float> (face.getCentreX(), face.getBottom() - 12.0f);
+    const auto centre = juce::Point<float> (face.getCentreX(), face.getBottom() - 14.0f);
 
     // Tick marks along the arc
     for (int i = 0; i <= 10; ++i)
@@ -224,12 +224,12 @@ void TubeChamberComponent::paint (juce::Graphics& g)
     g.setColour (juce::Colour (0x33c88840));
     g.drawRoundedRectangle (window.reduced (0.5f), 5.0f, 1.0f);
 
-    // Draw three vacuum tubes side by side
+    // Draw three vacuum tubes — narrow 20 px capsules, tall height, proper pill shape
     const auto alpha = 0.22f + activity * 0.78f;
     const auto glowAlpha = activity * activity;   // non-linear warm-up glow
-    const float tubeW = window.getWidth() / 3.0f - 6.0f;
-    const float tubeH = window.getHeight() - 16.0f;
-    const float tubeRadius = juce::jmin (tubeW * 0.5f, 8.0f);   // small corner = tall capsule
+    const float tubeW = juce::jlimit (16.0f, 22.0f, window.getWidth() / 3.0f - 8.0f);
+    const float tubeH = juce::jlimit (60.0f, 120.0f, window.getHeight() - 16.0f);
+    const float tubeRadius = tubeW * 0.40f;       // pill/capsule shape
 
     for (int i = 0; i < 3; ++i)
     {

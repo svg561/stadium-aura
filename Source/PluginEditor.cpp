@@ -400,7 +400,7 @@ void StadiumAuraAudioProcessorEditor::resized()
     saveBtn.setBounds     (topBar.removeFromLeft (48).reduced (2, 12));
     abA.setBounds         (topBar.removeFromLeft (26).reduced (2, 12));
     abB.setBounds         (topBar.removeFromLeft (26).reduced (2, 12));
-    undoBtn.setBounds     (topBar.removeFromLeft (44).reduced (2, 12));
+    topBar.removeFromLeft (44);  // reserved space — undo/redo live in the footer
     settingsBtn.setBounds (topBar.removeFromRight (30).reduced (2, 12));
     helpBtn.setBounds     (topBar.removeFromRight (30).reduced (2, 12));
     monitorLabel.setBounds (topBar.removeFromRight (180).reduced (2, 12));
@@ -443,9 +443,9 @@ void StadiumAuraAudioProcessorEditor::resized()
     analyzeSource.setBounds (row3.reduced (4, knobH / 4));
     hardwareSafe.setBounds (leftArea.removeFromTop (26).reduced (4, 2));
     leftArea.removeFromTop (6);
-    // Preamp/char knobs
+    // Preamp/char knobs — mix lives in the right panel output row, not here
     auto charRow = leftArea.removeFromTop (knobH);
-    layoutKnobRow (charRow, { &presenceKnob, &mix });
+    presenceKnob.setBounds (charRow.withSizeKeepingCentre (juce::jmin (charRow.getWidth() - 8, knobH - 4), knobH - 4));
     preampMode.setBounds (leftArea.removeFromTop (24));
     leftArea.removeFromTop (4);
     if (leftArea.getHeight() >= 60)
@@ -483,9 +483,9 @@ void StadiumAuraAudioProcessorEditor::resized()
     auto compRow2 = rightArea.removeFromTop (78);
     layoutKnobRow (compRow2, { &threshold, &ratio, &bleed });
     rightArea.removeFromTop (6);
-    // Output controls
+    // Output controls — ceiling lives in the EQ panel limiter block, not here
     auto outRow = rightArea.removeFromTop (78);
-    layoutKnobRow (outRow, { &mix, &width, &ceiling });
+    layoutKnobRow (outRow, { &mix, &width });
     if (rightArea.getHeight() >= 80)
         outputKnob.setBounds (rightArea.withSizeKeepingCentre (juce::jmin (rightArea.getWidth() - 8, 90), 90));
 
@@ -518,8 +518,7 @@ void StadiumAuraAudioProcessorEditor::resized()
     bypass.setBounds (util.removeFromLeft (88).reduced (2, 10));
     dim.setBounds    (util.removeFromLeft (64).reduced (2, 16));
     qualityBar.setBounds (util.reduced (2, 18));
-    // right side of meter bar: width knob
-    width.setBounds (meters.reduced (4, 8).withSizeKeepingCentre (80, 80));
+    // width knob lives in the right panel output row, not the meter bar
 
     // ── FOOTER / BOTTOM STRIP ─────────────────────────────────────────────────
     auto footer = footerBar.reduced (2, 4);
@@ -539,6 +538,14 @@ void StadiumAuraAudioProcessorEditor::resized()
 
 void StadiumAuraAudioProcessorEditor::timerCallback()
 {
+    // Keep input unmuted for the first ~2 s — JUCE's standalone audio device
+    // state loads after the editor constructor and can silently re-mute input.
+    if (startupUnmuteCountdown > 0)
+    {
+        --startupUnmuteCountdown;
+        StandaloneAudio::forceUnmuteInput();
+    }
+
     const auto in = processorRef.inputMeter.load (std::memory_order_relaxed);
     const auto out = processorRef.outputMeter.load (std::memory_order_relaxed);
     const auto gr = processorRef.gainReductionMeter.load (std::memory_order_relaxed);
@@ -577,9 +584,21 @@ void StadiumAuraAudioProcessorEditor::timerCallback()
 
     if (StandaloneAudio::isStandaloneBuild())
     {
-        monitorLabel.setText (StandaloneAudio::getMonitorStatusText(), juce::dontSendNotification);
-        monitorLabel.setColour (juce::Label::textColourId,
-                                StandaloneAudio::isInputMuted() ? juce::Colour (0xffff6b3a) : juce::Colour (0xff8fcf4a));
+        if (StandaloneAudio::isInputMuted())
+        {
+            monitorLabel.setText (StandaloneAudio::getMonitorStatusText(), juce::dontSendNotification);
+            monitorLabel.setColour (juce::Label::textColourId, juce::Colour (0xffff6b3a));
+        }
+        else if (processorRef.inputMeter.load (std::memory_order_relaxed) < 0.001f)
+        {
+            monitorLabel.setText (juce::CharPointer_UTF8 ("\xe2\x9a\xa0 No live input detected"), juce::dontSendNotification);
+            monitorLabel.setColour (juce::Label::textColourId, juce::Colour (0xffff9a2e));
+        }
+        else
+        {
+            monitorLabel.setText (StandaloneAudio::getMonitorStatusText(), juce::dontSendNotification);
+            monitorLabel.setColour (juce::Label::textColourId, juce::Colour (0xff8fcf4a));
+        }
     }
 
     const auto hot = lim > 0.8f || gr > 10.0f || out > 0.94f || tubeLevel > 0.88f;

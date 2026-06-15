@@ -61,4 +61,15 @@ inline bool isInputMuted()
    #endif
     return false;
 }
+
+// Call this repeatedly for the first few seconds after launch to override
+// any saved mute state that JUCE loads asynchronously.
+inline void forceUnmuteInput()
+{
+   #if JucePlugin_Build_Standalone
+    if (auto* holder = juce::StandalonePluginHolder::getInstance())
+        if ((bool) holder->getMuteInputValue().getValue())
+            holder->getMuteInputValue().setValue (false);
+   #endif
+}
 }

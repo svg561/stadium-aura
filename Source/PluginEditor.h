@@ -119,6 +119,9 @@ private:
     std::array<std::unique_ptr<juce::XmlElement>, 2> abSnapshots;
     int focusedRoute = 0;
     int activeAbSlot = 0;
+    // Re-assert standalone unmute for the first ~2 s so the saved device state
+    // cannot silently re-mute the input after the editor is constructed.
+    int startupUnmuteCountdown { 120 };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (StadiumAuraAudioProcessorEditor)
 };
