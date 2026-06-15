@@ -1,1 +1,0 @@
-/Library/Developer/CommandLineTools/usr/bin/c++  -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX13.1.sdk -mmacosx-version-min=12.7 -Wl,-search_paths_first -Wl,-headerpad_max_install_names CMakeFiles/vst3_helper.dir/Users/studio/Documents/New_project/JUCE/modules/juce_audio_plugin_client/VST3/juce_VST3ManifestHelper.cpp.o -o vst3_helper  -framework Foundation
