@@ -113,6 +113,14 @@ private:
     SegmentedChoiceBar compModeButtons;
     SegmentedChoiceBar qualityBar;
 
+    // Horizontal vintage VU meters (meter strip)
+    AuraHorizontalVUMeter inputVuMeter      { AuraHorizontalVUMeter::MeterMode::Input };
+    AuraHorizontalVUMeter grHorizontalMeter { AuraHorizontalVUMeter::MeterMode::GainReduction };
+    AuraHorizontalVUMeter outputVuMeter     { AuraHorizontalVUMeter::MeterMode::Output };
+
+    // Aura big label (above aura knob in hero panel)
+    juce::Label auraBigLabel;
+
     std::vector<std::unique_ptr<SliderAttachment>> sliderAttachments;
     std::vector<std::unique_ptr<ButtonAttachment>> buttonAttachments;
     std::vector<std::unique_ptr<ComboAttachment>> comboAttachments;
@@ -121,7 +129,8 @@ private:
     int activeAbSlot = 0;
     // Re-assert standalone unmute for the first ~2 s so the saved device state
     // cannot silently re-mute the input after the editor is constructed.
-    int startupUnmuteCountdown { 120 };
+    int startupUnmuteCountdown { 180 };  // 3 s at 60 Hz
+    bool startupAutoInputTriggered { false };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (StadiumAuraAudioProcessorEditor)
 };

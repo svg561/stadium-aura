@@ -137,8 +137,12 @@ bool StadiumAuraAudioProcessor::isBusesLayoutSupported (const BusesLayout& layou
 {
     const auto input = layouts.getMainInputChannelSet();
     const auto output = layouts.getMainOutputChannelSet();
-    return (output == juce::AudioChannelSet::mono() || output == juce::AudioChannelSet::stereo())
-        && (input == output || (input == juce::AudioChannelSet::mono() && output == juce::AudioChannelSet::stereo()));
+    if (output != juce::AudioChannelSet::mono() && output != juce::AudioChannelSet::stereo())
+        return false;
+    // Also accept disabled input so the standalone can open before a mic is selected.
+    return input == juce::AudioChannelSet::disabled()
+        || input == output
+        || (input == juce::AudioChannelSet::mono() && output == juce::AudioChannelSet::stereo());
 }
 
 void StadiumAuraAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
