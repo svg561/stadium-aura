@@ -7,6 +7,7 @@
 #include "ui/PremiumLookAndFeel.h"
 #include "ui/RackComponents.h"
 #include "ui/RackMeter.h"
+#include "ui/EQPanel.h"
 
 class StadiumAuraAudioProcessorEditor final : public juce::AudioProcessorEditor, private juce::Timer
 {
@@ -108,7 +109,7 @@ private:
     HorizontalReductionMeter limMeter { "LIMITER GR" };
     VuMeterComponent vuMeter;
     TubeChamberComponent tubeChamber;
-    EqSpectrumComponent eqDisplay;
+    EQPanel eqDisplay;
     SegmentedChoiceBar trackButtons;
     SegmentedChoiceBar compModeButtons;
     SegmentedChoiceBar qualityBar;

@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "dsp/EQBand.h"
 
 namespace Param
 {
@@ -122,6 +123,48 @@ juce::AudioProcessorValueTreeState::ParameterLayout StadiumAuraAudioProcessor::c
     layout.add (std::make_unique<Bool> (Param::bypass, "Bypass", false));
     layout.add (std::make_unique<Bool> (Param::dim, "Dim", false));
     layout.add (std::make_unique<Choice> (Param::quality, "Quality", juce::StringArray { "Eco", "Normal", "High", "Ultra" }, 1));
+
+    // 24-band EQ parameters
+    static const float defaultFreqs[24] = {
+        20.0f, 30.0f, 50.0f, 80.0f, 120.0f, 200.0f, 300.0f, 500.0f,
+        800.0f, 1200.0f, 2000.0f, 3000.0f, 4000.0f, 5000.0f, 6000.0f, 7000.0f,
+        8000.0f, 9000.0f, 10000.0f, 11000.0f, 12000.0f, 14000.0f, 16000.0f, 18000.0f
+    };
+    for (int b = 1; b <= 24; ++b)
+    {
+        const auto bs  = juce::String (b).paddedLeft ('0', 2);
+        const auto pfx = "EQ_BAND_" + bs + "_";
+        const auto bn  = juce::String (b);
+        layout.add (std::make_unique<Bool>   (pfx + "ENABLED",        "EQ Band " + bn + " Enable",   true));
+        layout.add (std::make_unique<Choice> (pfx + "TYPE",           "EQ Band " + bn + " Type",
+            juce::StringArray { "Bell","Low Cut","High Cut","Low Shelf","High Shelf","Notch","Tilt" }, 0));
+        layout.add (std::make_unique<Float>  (pfx + "FREQ",           "EQ Band " + bn + " Freq",
+            juce::NormalisableRange<float> (20.0f, 20000.0f, 0.01f, 0.3f), defaultFreqs[b - 1],
+            "Hz", juce::AudioProcessorParameter::genericParameter, hz));
+        layout.add (std::make_unique<Float>  (pfx + "GAIN",           "EQ Band " + bn + " Gain",
+            juce::NormalisableRange<float> (-30.0f, 30.0f, 0.01f), 0.0f,
+            "dB", juce::AudioProcessorParameter::genericParameter, db));
+        layout.add (std::make_unique<Float>  (pfx + "Q",              "EQ Band " + bn + " Q",
+            juce::NormalisableRange<float> (0.025f, 40.0f, 0.001f, 0.3f), 1.0f));
+        layout.add (std::make_unique<Choice> (pfx + "SLOPE",          "EQ Band " + bn + " Slope",
+            juce::StringArray { "6","12","18","24","36","48","72","96" }, 1));
+        layout.add (std::make_unique<Choice> (pfx + "CHANNEL_MODE",   "EQ Band " + bn + " Channel",
+            juce::StringArray { "Stereo","Mid","Side","Left","Right" }, 0));
+        layout.add (std::make_unique<Bool>   (pfx + "DYNAMIC_ENABLED","EQ Band " + bn + " Dynamic",  false));
+        layout.add (std::make_unique<Float>  (pfx + "DYNAMIC_RANGE",  "EQ Band " + bn + " Dyn Range",
+            juce::NormalisableRange<float> (-24.0f, 24.0f, 0.01f), 0.0f,
+            "dB", juce::AudioProcessorParameter::genericParameter, db));
+        layout.add (std::make_unique<Float>  (pfx + "THRESHOLD",      "EQ Band " + bn + " Threshold",
+            juce::NormalisableRange<float> (-60.0f, 0.0f, 0.01f), -24.0f,
+            "dB", juce::AudioProcessorParameter::genericParameter, db));
+        layout.add (std::make_unique<Float>  (pfx + "ATTACK",         "EQ Band " + bn + " Attack",
+            juce::NormalisableRange<float> (0.1f, 200.0f, 0.1f), 10.0f,
+            "ms", juce::AudioProcessorParameter::genericParameter, milliseconds));
+        layout.add (std::make_unique<Float>  (pfx + "RELEASE",        "EQ Band " + bn + " Release",
+            juce::NormalisableRange<float> (10.0f, 2000.0f, 0.1f), 120.0f,
+            "ms", juce::AudioProcessorParameter::genericParameter, milliseconds));
+    }
+
     return layout;
 }
 
@@ -160,6 +203,10 @@ void StadiumAuraAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, 
     limiterReductionMeter.store (-auraProcessor.getLimiterReductionDb(), std::memory_order_relaxed);
     tubeActivityMeter.store (auraProcessor.getTubeActivity(), std::memory_order_relaxed);
     updateAnalyzer (buffer);
+
+    // Feed spectrum analyser (mono mix of first two channels)
+    if (buffer.getNumChannels() > 0 && buffer.getNumSamples() > 0)
+        spectrumAnalyzer.pushSamples (buffer.getReadPointer (0), buffer.getNumSamples());
 }
 
 AuraParameters StadiumAuraAudioProcessor::readParameters() const noexcept
@@ -213,6 +260,28 @@ AuraParameters StadiumAuraAudioProcessor::readParameters() const noexcept
     p.harmonicsSectionEnabled = get (Param::harmonicsSectionEnable) > 0.5f;
     p.sumSectionEnabled = get (Param::sumSectionEnable) > 0.5f;
     p.masterSectionEnabled = get (Param::masterSectionEnable) > 0.5f;
+
+    static const float slopeTable[8] = { 6.f,12.f,18.f,24.f,36.f,48.f,72.f,96.f };
+    for (int b = 0; b < 24; ++b)
+    {
+        const auto bs  = juce::String (b + 1).paddedLeft ('0', 2);
+        const auto pfx = "EQ_BAND_" + bs + "_";
+        auto& s = p.eqBands[static_cast<size_t> (b)];
+        s.enabled       = apvts.getRawParameterValue (pfx + "ENABLED")->load()        > 0.5f;
+        s.type          = static_cast<EQBandType>    (juce::jlimit (0, 6, (int) apvts.getRawParameterValue (pfx + "TYPE")->load()));
+        s.frequencyHz   = apvts.getRawParameterValue (pfx + "FREQ")->load();
+        s.gainDb        = apvts.getRawParameterValue (pfx + "GAIN")->load();
+        s.q             = apvts.getRawParameterValue (pfx + "Q")->load();
+        const int si    = juce::jlimit (0, 7, (int) apvts.getRawParameterValue (pfx + "SLOPE")->load());
+        s.slopeDbPerOct = slopeTable[si];
+        s.channelMode   = static_cast<EQChannelMode> (juce::jlimit (0, 4, (int) apvts.getRawParameterValue (pfx + "CHANNEL_MODE")->load()));
+        s.dynamicEnabled  = apvts.getRawParameterValue (pfx + "DYNAMIC_ENABLED")->load() > 0.5f;
+        s.dynamicRangeDb  = apvts.getRawParameterValue (pfx + "DYNAMIC_RANGE")->load();
+        s.thresholdDb     = apvts.getRawParameterValue (pfx + "THRESHOLD")->load();
+        s.attackMs        = apvts.getRawParameterValue (pfx + "ATTACK")->load();
+        s.releaseMs       = apvts.getRawParameterValue (pfx + "RELEASE")->load();
+    }
+
     return p;
 }
 
