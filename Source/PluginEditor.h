@@ -8,6 +8,7 @@
 #include "ui/RackComponents.h"
 #include "ui/RackMeter.h"
 #include "ui/EQPanel.h"
+#include "ui/ExpandedEQPanel.h"
 
 class StadiumAuraAudioProcessorEditor final : public juce::AudioProcessorEditor, private juce::Timer
 {
@@ -134,6 +135,8 @@ private:
 
     // Aura big label (above aura knob in hero panel)
     juce::Label auraBigLabel;
+
+    std::unique_ptr<ExpandedEQPanel> expandedEQPanel;
 
     std::vector<std::unique_ptr<SliderAttachment>> sliderAttachments;
     std::vector<std::unique_ptr<ButtonAttachment>> buttonAttachments;

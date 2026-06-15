@@ -554,9 +554,51 @@ void EQPanel::drawAuraTrace (juce::Graphics& g, juce::Rectangle<float> plot) con
     }
 }
 
+static juce::Path createSpectrumPathFromMags (const std::array<float, SpectrumAnalyzer::fftSize / 2>& mags,
+                                               juce::Rectangle<float> bounds, double sr)
+{
+    if (sr < 1.0) return {};
+    juce::Path path;
+    const float sampleRate = static_cast<float> (sr);
+    bool started = false;
+
+    for (int i = 1; i < SpectrumAnalyzer::fftSize / 2; ++i)
+    {
+        const float freq = static_cast<float> (i) * sampleRate / static_cast<float> (SpectrumAnalyzer::fftSize);
+        if (freq < 20.0f || freq > 20000.0f) continue;
+
+        const float norm = std::log10 (freq / 20.0f) / std::log10 (20000.0f / 20.0f);
+        const float x    = bounds.getX() + norm * bounds.getWidth();
+        const float mag  = mags[static_cast<size_t> (i)];
+        const float db   = juce::Decibels::gainToDecibels (mag + 1e-9f, -120.0f);
+        const float y    = juce::jmap (db, -80.0f, 0.0f, bounds.getBottom(),
+                                       bounds.getY() + bounds.getHeight() * 0.1f);
+
+        if (!started) { path.startNewSubPath (x, y); started = true; }
+        else          { path.lineTo (x, y); }
+    }
+    return path;
+}
+
+void EQPanel::setExternalAnalyzerMagnitudes (const std::array<float, SpectrumAnalyzer::fftSize / 2>& mags) noexcept
+{
+    externalMagnitudes = mags;
+    hasExternalMagnitudes = true;
+}
+
+void EQPanel::selectBandExternally (int bandIndex)
+{
+    showPopupForBand (bandIndex);
+    repaint();
+}
+
 void EQPanel::drawAnalyzer (juce::Graphics& g, juce::Rectangle<float> plot) const
 {
-    auto strokePath = createSpectrumPath (spectrumAnalyzer, plot, currentSampleRate);
+    juce::Path strokePath;
+    if (hasExternalMagnitudes)
+        strokePath = createSpectrumPathFromMags (externalMagnitudes, plot, currentSampleRate);
+    else
+        strokePath = createSpectrumPath (spectrumAnalyzer, plot, currentSampleRate);
     if (strokePath.isEmpty()) return;
 
     // Filled area
@@ -811,6 +853,10 @@ void EQPanel::mouseDown (const juce::MouseEvent& e)
         draggingNode   = true;
         dragStartPos   = e.position;
         dragStartState = bandStates[static_cast<size_t> (hit)];
+    }
+    else if (!expanded && onEmptyAreaClicked)
+    {
+        onEmptyAreaClicked();
     }
 }
 

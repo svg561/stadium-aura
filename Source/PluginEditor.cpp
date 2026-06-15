@@ -151,6 +151,26 @@ StadiumAuraAudioProcessorEditor::StadiumAuraAudioProcessorEditor (StadiumAuraAud
     };
     eqDisplay.bindToParameters (processorRef.apvts);
 
+    // Compact strip click opens the expanded AURA EQ overlay
+    eqDisplay.onEmptyAreaClicked = [this]
+    {
+        if (expandedEQPanel != nullptr)
+        {
+            expandedEQPanel->setVisible (true);
+            expandedEQPanel->toFront (false);
+            resized();
+        }
+    };
+
+    // Create and add the expanded EQ panel (initially hidden)
+    expandedEQPanel = std::make_unique<ExpandedEQPanel> (processorRef);
+    addChildComponent (*expandedEQPanel);
+    expandedEQPanel->onClose = [this]
+    {
+        expandedEQPanel->setVisible (false);
+        resized();
+    };
+
     const char* routeTips[] {
         "Mic: Source Match + character. Right-click toggles mic DSP bypass.",
         "Pre: Preamp architecture. Right-click toggles preamp bypass.",
@@ -646,6 +666,13 @@ void StadiumAuraAudioProcessorEditor::resized()
     }
 
     eqDisplay.toFront (false);
+
+    // Expanded AURA EQ overlay covers almost the entire editor
+    if (expandedEQPanel != nullptr && expandedEQPanel->isVisible())
+    {
+        expandedEQPanel->setBounds (getLocalBounds().reduced (18, 14));
+        expandedEQPanel->toFront (false);
+    }
 }
 
 void StadiumAuraAudioProcessorEditor::timerCallback()
@@ -703,6 +730,10 @@ void StadiumAuraAudioProcessorEditor::timerCallback()
     grHorizontalMeter.setSaturation (juce::jlimit (0.0f, 1.0f, tubeLevel));
 
     updateEqDisplayState();
+
+    // Refresh the expanded EQ panel when visible (30 Hz is sufficient for visual)
+    if (expandedEQPanel != nullptr && expandedEQPanel->isVisible())
+        expandedEQPanel->refreshFromParameters();
 
     presetCard.setText (processorRef.getProgramName (processorRef.getCurrentProgram()), juce::dontSendNotification);
 

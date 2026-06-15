@@ -55,6 +55,9 @@ public:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     AnalyzerSnapshot getAnalyzerSnapshot() const noexcept;
 
+    // Returns the summed EQ magnitude in dB at a given frequency, based on current band states.
+    float getEQMagnitudeDb (float freqHz) const;
+
 private:
     struct FactoryPreset
     {

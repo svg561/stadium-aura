@@ -23,11 +23,13 @@ public:
     static float gainToY      (float db, juce::Rectangle<float> bounds, float visibleDbRange);
     static float yToGain      (float y,  juce::Rectangle<float> bounds, float visibleDbRange);
 
+    // Made public so external callers (e.g. getEQMagnitudeDb) can compute band response
+    static float bandResponseDb (const EQBandState& band, float freqHz, double sr) noexcept;
+
 private:
     struct BiquadCoeffs { float b0=1.f,b1=0.f,b2=0.f,a1=0.f,a2=0.f; };
 
     static float magnitudeAtFrequency (float freqHz, const BiquadCoeffs& c, double sr) noexcept;
-    static float bandResponseDb (const EQBandState& band, float freqHz, double sr) noexcept;
 
     static BiquadCoeffs calcBell      (float freqHz, float gainDb, float q, double sr) noexcept;
     static BiquadCoeffs calcLowCut    (float freqHz, float q, double sr) noexcept;
@@ -105,11 +107,26 @@ public:
     bool isExpanded        () const noexcept { return expanded; }
     void setExpanded       (bool shouldExpand);
 
-    std::function<void (bool)>         onExpandedChanged;
+    std::function<void (bool)>            onExpandedChanged;
     std::function<void (int,float,float)> onNodeDragged;
+    std::function<void()>                 onEmptyAreaClicked; // fires in compact mode when empty area clicked
+
+    // Feed magnitudes from an external SpectrumAnalyzer (e.g. the processor's one)
+    void setExternalAnalyzerMagnitudes (const std::array<float, SpectrumAnalyzer::fftSize / 2>& mags) noexcept;
+
+    // Programmatically select a band and show its popup (for band-card clicks in expanded panel)
+    void selectBandExternally (int bandIndex);
 
     // Visible dB range options
     static constexpr float dbRangeOptions[] = { 3.0f, 6.0f, 12.0f, 30.0f };
+
+    void setAuraTraceOn (bool on) noexcept { auraTraceOn = on; repaint(); }
+    void setDbRangeIndex (int idx) noexcept
+    {
+        dbRangeIndex   = juce::jlimit (0, 3, idx);
+        visibleDbRange = dbRangeOptions[static_cast<size_t> (dbRangeIndex)];
+        repaint();
+    }
 
 private:
     // -------------------------------------------------------------------
@@ -148,6 +165,8 @@ private:
     // -------------------------------------------------------------------
     std::array<EQBandState, 24> bandStates {};
     SpectrumAnalyzer spectrumAnalyzer;
+    std::array<float, SpectrumAnalyzer::fftSize / 2> externalMagnitudes {};
+    bool hasExternalMagnitudes = false;
     EQBandPopup popup;
 
     juce::AudioProcessorValueTreeState* apvtsRef = nullptr;

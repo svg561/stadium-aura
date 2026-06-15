@@ -2,6 +2,7 @@
 #include "PluginEditor.h"
 #include "dsp/EQBand.h"
 #include "dsp/AuraCompressorEngine.h"
+#include "ui/EQPanel.h"
 
 // Set to true to bypass all DSP and pass mic input directly to output.
 // Flip to false once standalone audio I/O is confirmed working.
@@ -216,6 +217,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout StadiumAuraAudioProcessor::c
         juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.4f));
     layout.add (std::make_unique<Float>  ("EMOTION_LOCK_INTENSITY",        "Emotion Lock Intensity",
         juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.5f));
+
+    // Global EQ bypass (visual + audio passthrough flag for the expanded EQ panel)
+    layout.add (std::make_unique<Bool> ("EQ_GLOBAL_BYPASS", "EQ Global Bypass", false));
 
     return layout;
 }
@@ -521,6 +525,36 @@ void StadiumAuraAudioProcessor::setStateInformation (const void* data, int sizeI
 {
     if (auto xml = getXmlFromBinary (data, sizeInBytes); xml != nullptr && xml->hasTagName (apvts.state.getType()))
         apvts.replaceState (juce::ValueTree::fromXml (*xml));
+}
+
+float StadiumAuraAudioProcessor::getEQMagnitudeDb (float freqHz) const
+{
+    static const float slopeTable[] = { 6.f,12.f,18.f,24.f,36.f,48.f,72.f,96.f };
+    std::array<EQBandState, 24> states {};
+
+    for (int b = 0; b < 24; ++b)
+    {
+        const auto pfx = "EQ_BAND_" + juce::String (b + 1).paddedLeft ('0', 2) + "_";
+        auto get = [this] (const juce::String& id) -> float
+        {
+            if (auto* p = apvts.getRawParameterValue (id)) return p->load();
+            return 0.0f;
+        };
+        auto& s = states[static_cast<size_t> (b)];
+        s.enabled       = get (pfx + "ENABLED") > 0.5f;
+        s.type          = static_cast<EQBandType> (juce::jlimit (0, 6, (int) get (pfx + "TYPE")));
+        s.frequencyHz   = get (pfx + "FREQ");
+        s.gainDb        = get (pfx + "GAIN");
+        s.q             = get (pfx + "Q");
+        const int si    = juce::jlimit (0, 7, (int) get (pfx + "SLOPE"));
+        s.slopeDbPerOct = slopeTable[si];
+    }
+
+    const double sr = getSampleRate() > 0 ? getSampleRate() : 44100.0;
+    float total = 0.0f;
+    for (const auto& s : states)
+        total += EQCurveRenderer::bandResponseDb (s, freqHz, sr);
+    return total;
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
