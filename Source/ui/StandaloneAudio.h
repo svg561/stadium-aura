@@ -72,4 +72,74 @@ inline void forceUnmuteInput()
             holder->getMuteInputValue().setValue (false);
    #endif
 }
+
+// Returns true if no input device is currently active (first launch / not configured).
+inline bool hasNoInputDevice()
+{
+   #if JucePlugin_Build_Standalone
+    if (auto* holder = juce::StandalonePluginHolder::getInstance())
+        if (auto* dm = holder->deviceManager.getCurrentAudioDevice())
+            return dm->getActiveInputChannels().isZero();
+    return true;
+   #else
+    return false;
+   #endif
+}
+
+// Open the audio settings dialog immediately (call once on first launch).
+inline void showAudioSetup()
+{
+   #if JucePlugin_Build_Standalone
+    if (auto* holder = juce::StandalonePluginHolder::getInstance())
+        holder->showAudioSettingsDialog();
+   #endif
+}
+
+// Try to activate the first available input device automatically.
+// Returns true if an input was found and activated.
+inline bool autoSelectDefaultInput()
+{
+   #if JucePlugin_Build_Standalone
+    if (auto* holder = juce::StandalonePluginHolder::getInstance())
+    {
+        auto& dm = holder->deviceManager;
+        if (auto* currentDevice = dm.getCurrentAudioDevice())
+        {
+            // Already have a device — just make sure input is enabled
+            auto setup = dm.getAudioDeviceSetup();
+            if (setup.inputDeviceName.isEmpty())
+            {
+                // Try to pick any available input device
+                for (auto* type : dm.getAvailableDeviceTypes())
+                {
+                    auto inputs = type->getDeviceNames (true);
+                    if (! inputs.isEmpty())
+                    {
+                        setup.inputDeviceName = inputs[0];
+                        setup.useDefaultInputChannels = true;
+                        dm.setAudioDeviceSetup (setup, true);
+                        holder->getMuteInputValue().setValue (false);
+                        holder->saveAudioDeviceState();
+                        return true;
+                    }
+                }
+            }
+            else
+            {
+                // Device name is set — enable all input channels and unmute
+                auto active = currentDevice->getActiveInputChannels();
+                if (active.isZero())
+                {
+                    setup.inputChannels.setRange (0, currentDevice->getInputChannelNames().size(), true);
+                    dm.setAudioDeviceSetup (setup, true);
+                }
+                holder->getMuteInputValue().setValue (false);
+                holder->saveAudioDeviceState();
+                return true;
+            }
+        }
+    }
+   #endif
+    return false;
+}
 }

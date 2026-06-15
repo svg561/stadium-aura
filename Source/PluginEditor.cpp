@@ -110,6 +110,17 @@ StadiumAuraAudioProcessorEditor::StadiumAuraAudioProcessorEditor (StadiumAuraAud
         addAndMakeVisible (*label);
     }
 
+    auraBigLabel.setText ("AURA BIG", juce::dontSendNotification);
+    auraBigLabel.setFont (juce::FontOptions (11.0f, juce::Font::bold));
+    auraBigLabel.setColour (juce::Label::textColourId, juce::Colour (0xffffd451));
+    auraBigLabel.setJustificationType (juce::Justification::centred);
+    addAndMakeVisible (auraBigLabel);
+
+    for (auto* c : { static_cast<juce::Component*> (&inputVuMeter),
+                     static_cast<juce::Component*> (&grHorizontalMeter),
+                     static_cast<juce::Component*> (&outputVuMeter) })
+        addAndMakeVisible (*c);
+
     trackButtons.setChoices ({ "8", "16", "24", "32" });
     trackButtons.setSelectedIndex (2, juce::dontSendNotification);
     trackButtons.onChange = [this] (int index)
@@ -186,6 +197,7 @@ StadiumAuraAudioProcessorEditor::StadiumAuraAudioProcessorEditor (StadiumAuraAud
     captureAbState (0);
     captureAbState (1);
     StandaloneAudio::configureEditorControls (settingsBtn, helpBtn);
+    StandaloneAudio::autoSelectDefaultInput();  // try to activate mic on startup
     startTimerHz (60);
 }
 
@@ -402,190 +414,238 @@ void StadiumAuraAudioProcessorEditor::paint (juce::Graphics& g)
 
 void StadiumAuraAudioProcessorEditor::resized()
 {
-    auto bounds = getLocalBounds().reduced (16, 10);
-    auto topBar    = bounds.removeFromTop (52);
-    auto footerBar = bounds.removeFromBottom (80);
-    auto meterBar  = bounds.removeFromBottom (90);
-    auto eqRow     = bounds.removeFromBottom (200);   // tall enough for real EQ display
-    auto main      = bounds.reduced (0, 4);
+    constexpr int panelPadding  = 12;
+    constexpr int dropdownH     = 28;
 
-    // ── TOP BAR ──────────────────────────────────────────────────────────────
-    auto logo = topBar.removeFromLeft (270);
-    logoTitle.setBounds (logo.removeFromTop (30));
+    auto area       = getLocalBounds().reduced (10);
+    auto header     = area.removeFromTop (72);
+    auto main       = area.removeFromTop (juce::roundToInt (area.getHeight() * 0.58f));
+    auto eqStrip    = area.removeFromTop (120);
+    auto meterStrip = area.removeFromTop (95);
+    auto bottom     = area;
+
+    // ── HEADER ───────────────────────────────────────────────────────────────
+    const int logoW = (getWidth() < 1300) ? 180 : 220;
+    auto logo = header.removeFromLeft (logoW);
+    logoTitle.setBounds    (logo.removeFromTop (logo.getHeight() / 2));
     logoSubtitle.setBounds (logo);
-    favoriteBtn.setBounds (topBar.removeFromLeft (26).reduced (2, 12));
-    presetPrev.setBounds  (topBar.removeFromLeft (26).reduced (2, 12));
-    presetNext.setBounds  (topBar.removeFromLeft (26).reduced (2, 12));
-    presetCard.setBounds  (topBar.removeFromLeft (190).reduced (4, 8));
-    saveBtn.setBounds     (topBar.removeFromLeft (48).reduced (2, 12));
-    abA.setBounds         (topBar.removeFromLeft (26).reduced (2, 12));
-    abB.setBounds         (topBar.removeFromLeft (26).reduced (2, 12));
-    topBar.removeFromLeft (44);  // reserved space — undo/redo live in the footer
-    settingsBtn.setBounds (topBar.removeFromRight (30).reduced (2, 12));
-    helpBtn.setBounds     (topBar.removeFromRight (30).reduced (2, 12));
-    monitorLabel.setBounds (topBar.removeFromRight (180).reduced (2, 12));
-    auto nav = topBar.reduced (2, 4);
-    const auto navW = nav.getWidth() / static_cast<int> (routing.size());
-    for (auto& button : routing)
-        button.setBounds (nav.removeFromLeft (navW).reduced (2, 1));
 
-    // ── MAIN ROW: left | inMeter | center | outMeter | right ─────────────────
-    auto inMeter  = main.removeFromLeft (58);
-    auto outMeter = main.removeFromRight (58);
-    const auto leftW   = juce::roundToInt (main.getWidth() * 0.27f);
-    const auto centerW = juce::roundToInt (main.getWidth() * 0.40f);
-    auto left   = main.removeFromLeft (leftW).reduced (2, 0);
-    auto center = main.removeFromLeft (centerW).reduced (2, 0);
-    auto right  = main.reduced (2, 0);
+    favoriteBtn.setBounds (header.removeFromLeft (26).reduced (2, 12));
+    presetPrev.setBounds  (header.removeFromLeft (26).reduced (2, 12));
+    presetNext.setBounds  (header.removeFromLeft (26).reduced (2, 12));
+    presetCard.setBounds  (header.removeFromLeft (180).reduced (4,  8));
+    saveBtn.setBounds     (header.removeFromLeft (44) .reduced (2, 12));
+    abA.setBounds         (header.removeFromLeft (26) .reduced (2, 12));
+    abB.setBounds         (header.removeFromLeft (26) .reduced (2, 12));
+    header.removeFromLeft (80);   // visual gap — undo / redo live in bottom strip
 
-    leftPanel.setBounds (left);
-    heroPanel.setBounds (center);
+    settingsBtn.setBounds  (header.removeFromRight (30).reduced (2, 12));
+    helpBtn.setBounds      (header.removeFromRight (30).reduced (2, 12));
+    monitorLabel.setBounds (header.removeFromRight (160).reduced (2, 12));
+
+    {
+        auto nav  = header.reduced (2, 4);
+        const int navW = nav.getWidth() / static_cast<int> (routing.size());
+        for (auto& b : routing)
+            b.setBounds (nav.removeFromLeft (navW).reduced (2, 1));
+    }
+
+    // ── MAIN ROW: inMeter | left | center | right | outMeter ─────────────────
+    auto inMeter  = main.removeFromLeft (52);
+    auto outMeter = main.removeFromRight (52);
+    auto left     = main.removeFromLeft (juce::roundToInt (main.getWidth() * 0.30f));
+    auto center   = main.removeFromLeft (juce::roundToInt (main.getWidth() * 0.45f));
+    auto right    = main;
+
+    leftPanel.setBounds  (left);
+    heroPanel.setBounds  (center);
     rightPanel.setBounds (right);
-    eqPanel.setBounds (eqRow.reduced (2, 0));
-    inputRms.setBounds  (inMeter.reduced (2, 4));
-    outputRms.setBounds (outMeter.reduced (2, 4));
+    eqPanel.setBounds    (eqStrip.reduced (2, 0));
+    inputRms.setBounds   (inMeter.reduced (2, 4));
+    outputRms.setBounds  (outMeter.reduced (2, 4));
 
-    // ── LEFT PANEL ────────────────────────────────────────────────────────────
-    auto leftArea = leftPanel.getBounds().reduced (10, 30);
-    // Source/Target mic dropdowns — guaranteed separate vertical slots
-    sourceMic.setBounds (leftArea.removeFromTop (24));
-    leftArea.removeFromTop (4);
-    targetMic.setBounds (leftArea.removeFromTop (24));
-    leftArea.removeFromTop (8);
-    // Matching engine knobs — 2 columns, 3 rows = 6 knobs
-    const auto knobH = juce::jmin (78, (leftArea.getHeight() - 90) / 4);
-    auto row1 = leftArea.removeFromTop (knobH);
-    layoutKnobRow (row1, { &correction, &targetAmount });
-    auto row2 = leftArea.removeFromTop (knobH);
-    layoutKnobRow (row2, { &badFreq, &bodyKnob });
-    auto row3 = leftArea.removeFromTop (knobH);
-    airKnob.setBounds (row3.removeFromLeft (row3.getWidth() / 2).withSizeKeepingCentre (knobH - 4, knobH - 4));
-    analyzeSource.setBounds (row3.reduced (4, knobH / 4));
-    hardwareSafe.setBounds (leftArea.removeFromTop (26).reduced (4, 2));
-    leftArea.removeFromTop (6);
-    // Preamp/char knobs — mix lives in the right panel output row, not here
-    auto charRow = leftArea.removeFromTop (knobH);
-    presenceKnob.setBounds (charRow.withSizeKeepingCentre (juce::jmin (charRow.getWidth() - 8, knobH - 4), knobH - 4));
-    preampMode.setBounds (leftArea.removeFromTop (24));
-    leftArea.removeFromTop (4);
-    if (leftArea.getHeight() >= 60)
-        preampDrive.setBounds (leftArea.withSizeKeepingCentre (juce::jmin (leftArea.getWidth() - 8, 76), 76));
+    // ── LEFT PANEL (INPUT / TONE) ─────────────────────────────────────────────
+    {
+        auto la = left.reduced (panelPadding, 30);
 
-    // ── CENTER / HERO PANEL ───────────────────────────────────────────────────
-    auto hero = heroPanel.getBounds().reduced (10, 30);
-    // Tube column on right — tall capsule tubes
-    auto tubeColumn = hero.removeFromRight (130);
-    tubeDriveKnob.setBounds (tubeColumn.removeFromTop (90).withSizeKeepingCentre (76, 76));
-    tubeBias.setBounds       (tubeColumn.removeFromTop (80).withSizeKeepingCentre (68, 68));
-    tubeType.setBounds       (tubeColumn.removeFromTop (24).reduced (4, 0));
-    tubeChamber.setBounds    (tubeColumn.reduced (4, 6));          // remaining space = tall tubes
-    // Aura knob — square, centered, no stretching
-    auto trackRow = hero.removeFromBottom (26);
-    trackButtons.setBounds (trackRow.reduced (40, 0));
-    auto sweetRow = hero.removeFromBottom (20);
-    sweetLow.setBounds  (sweetRow.removeFromLeft (sweetRow.getWidth() / 3));
-    sweetZone.setBounds (sweetRow.removeFromLeft (sweetRow.getWidth() / 2));
-    sweetHot.setBounds  (sweetRow);
-    const auto auraSize = juce::jmin (hero.getWidth(), hero.getHeight()) - 10;
-    aura.setBounds (hero.withSizeKeepingCentre (auraSize, auraSize).reduced (6));
+        sourceMic.setBounds   (la.removeFromTop (dropdownH));
+        la.removeFromTop (4);
+        targetMic.setBounds   (la.removeFromTop (dropdownH));
+        la.removeFromTop (4);
+        preampMode.setBounds  (la.removeFromTop (dropdownH));
+        la.removeFromTop (4);
+        consoleMode.setBounds (la.removeFromTop (dropdownH));
+        la.removeFromTop (8);
 
-    // ── RIGHT / DYNAMICS PANEL ────────────────────────────────────────────────
-    auto rightArea = rightPanel.getBounds().reduced (10, 30);
+        // 4 × 2 knob grid — fit to remaining height
+        const int gridH  = la.getHeight() - 26 - 4 - 24 - 8;   // reserve for buttons below
+        const int kH     = juce::jmax (44, juce::jmin (64, gridH / 4));
+        auto gridArea    = la.removeFromTop (kH * 4);
+        layoutKnobGrid (gridArea, 2, { &correction,   &targetAmount,
+                                       &bodyKnob,      &airKnob,
+                                       &presenceKnob,  &inputKnob,
+                                       &preampDrive,   &badFreq });
 
-    // Model bar (new engine — 6 models)
-    compModelBar.setBounds (rightArea.removeFromTop (28));
-    rightArea.removeFromTop (4);
+        la.removeFromTop (8);
+        analyzeSource.setBounds (la.removeFromTop (26).reduced (2));
+        la.removeFromTop (4);
+        hardwareSafe.setBounds  (la.removeFromTop (24).reduced (2));
+    }
 
-    // Legacy mode bar (smaller, secondary)
-    compModeButtons.setBounds (rightArea.removeFromTop (22));
-    rightArea.removeFromTop (4);
+    // ── CENTER PANEL (AURA) ───────────────────────────────────────────────────
+    {
+        auto ha = center.reduced (panelPadding, 30);
 
-    auto vuArea = rightArea.removeFromRight (juce::roundToInt (rightArea.getWidth() * 0.42f));
-    vuMode.setBounds         (vuArea.removeFromBottom (22).reduced (2));
-    compressorEnable.setBounds (vuArea.removeFromBottom (24).reduced (2));
+        // Tube column on the right
+        auto tubeCol = ha.removeFromRight (130);
+        tubeDriveKnob.setBounds (tubeCol.removeFromTop (90).withSizeKeepingCentre (76, 76));
+        tubeBias.setBounds      (tubeCol.removeFromTop (80).withSizeKeepingCentre (68, 68));
+        tubeType.setBounds      (tubeCol.removeFromTop (26).reduced (4, 0));
+        tubeChamber.setBounds   (tubeCol.reduced (4, 6));
 
-    // Emotion Lock + Aura Level toggles above the VU meter
-    auto elRow = vuArea.removeFromBottom (22);
-    emotionLockBtn.setBounds (elRow.removeFromLeft (elRow.getWidth() / 2).reduced (2));
-    auraLevelBtn.setBounds   (elRow.reduced (2));
-    auto elLabelRow = vuArea.removeFromBottom (16);
-    emotionLockStatusLabel.setBounds (elLabelRow.removeFromLeft (elLabelRow.getWidth() / 2).reduced (2));
-    auraLevelStateLabel.setBounds    (elLabelRow.reduced (2));
+        // Track selector + sweet labels at the bottom
+        auto trackRow = ha.removeFromBottom (26);
+        trackButtons.setBounds (trackRow.reduced (40, 0));
+        auto sweetRow = ha.removeFromBottom (22);
+        sweetLow.setBounds  (sweetRow.removeFromLeft (sweetRow.getWidth() / 3));
+        sweetZone.setBounds (sweetRow.removeFromLeft (sweetRow.getWidth() / 2));
+        sweetHot.setBounds  (sweetRow);
 
-    vuMeter.setBounds (vuArea.reduced (2));
+        // AURA knob + "AURA BIG" label above it
+        const auto auraSize = juce::jmin (ha.getWidth(), ha.getHeight()) - 8;
+        const auto auraRect = ha.withSizeKeepingCentre (auraSize, auraSize);
+        auraBigLabel.setBounds (juce::Rectangle<int> (
+            auraRect.getX(), auraRect.getY() - 18, auraRect.getWidth(), 16));
+        aura.setBounds (auraRect.reduced (6));
+    }
 
-    // Knob row 1: compAmount, compMakeup, attack, release
-    auto compRow1 = rightArea.removeFromTop (92);
-    layoutKnobRow (compRow1, { &compAmount, &compMakeup, &attack, &release });
+    // ── RIGHT PANEL (DYNAMICS / OUTPUT) ──────────────────────────────────────
+    {
+        auto ra = right.reduced (panelPadding, 30);
 
-    // Knob row 2: threshold, ratio, compInputKnob, compSidechainKnob
-    auto compRow2 = rightArea.removeFromTop (82);
-    layoutKnobRow (compRow2, { &threshold, &ratio, &compInputKnob, &compSidechainKnob });
+        compModelBar.setBounds    (ra.removeFromTop (28));
+        ra.removeFromTop (4);
+        compModeButtons.setBounds (ra.removeFromTop (22));
+        ra.removeFromTop (4);
 
-    rightArea.removeFromTop (4);
+        auto vuArea = ra.removeFromRight (juce::roundToInt (ra.getWidth() * 0.42f));
+        vuMode.setBounds           (vuArea.removeFromBottom (22).reduced (2));
+        compressorEnable.setBounds (vuArea.removeFromBottom (24).reduced (2));
+        {
+            auto elRow = vuArea.removeFromBottom (22);
+            emotionLockBtn.setBounds (elRow.removeFromLeft (elRow.getWidth() / 2).reduced (2));
+            auraLevelBtn.setBounds   (elRow.reduced (2));
+        }
+        {
+            auto elLRow = vuArea.removeFromBottom (16);
+            emotionLockStatusLabel.setBounds (elLRow.removeFromLeft (elLRow.getWidth() / 2).reduced (2));
+            auraLevelStateLabel.setBounds    (elLRow.reduced (2));
+        }
+        vuMeter.setBounds (vuArea.reduced (2));
 
-    // Knob row 3: mix, width, ceiling
-    auto outRow = rightArea.removeFromTop (78);
-    layoutKnobRow (outRow, { &mix, &width, &ceiling });
+        auto cr1 = ra.removeFromTop (88);
+        layoutKnobRow (cr1, { &compAmount, &compMakeup, &attack, &release });
 
-    if (rightArea.getHeight() >= 80)
-        outputKnob.setBounds (rightArea.withSizeKeepingCentre (juce::jmin (rightArea.getWidth() - 8, 90), 90));
+        auto cr2 = ra.removeFromTop (80);
+        layoutKnobRow (cr2, { &threshold, &ratio, &compInputKnob, &compSidechainKnob });
 
-    // ── EQ ROW ────────────────────────────────────────────────────────────────
-    auto lower = eqPanel.getBounds().reduced (10, 28);
-    // Saturation / Transformer knobs on far left
-    auto lowerLeft = lower.removeFromLeft (130);
-    layoutKnobRow (lowerLeft, { &saturation, &transformer });
-    // Console / Summing block
-    auto consolePart = lower.removeFromLeft (180);
-    consoleMode.setBounds (consolePart.removeFromTop (24).reduced (4, 0));
-    consolePart.removeFromTop (4);
-    { auto tmp = consolePart.removeFromTop (80); layoutKnobRow (tmp, { &summing, &glue }); }
-    // Limiter block on far right
-    auto limiterBox = lower.removeFromRight (150);
-    limiter.setBounds (limiterBox.removeFromTop (28).reduced (4, 2));
-    limiterBox.removeFromTop (4);
-    ceiling.setBounds (limiterBox.removeFromTop (80).withSizeKeepingCentre (72, 72));
-    limMeter.setBounds (limiterBox.reduced (4, 2));
-    // EQ spectrum/display takes the remaining center space — full height
-    eqDisplay.setBounds (lower.reduced (4, 0));
-    if (eqDisplay.isExpanded())
-        eqDisplay.setBounds (getLocalBounds().reduced (80, 60));
+        ra.removeFromTop (6);
+        auto outRow = ra.removeFromTop (80);
+        layoutKnobRow (outRow, { &mix, &width });
 
-    // ── METER BAR ─────────────────────────────────────────────────────────────
-    auto meters = meterBar.reduced (2, 4);
-    grMeter.setBounds (meters.removeFromLeft (juce::roundToInt (meters.getWidth() * 0.38f)).reduced (4, 6));
-    auto util = meters.removeFromLeft (juce::roundToInt (meters.getWidth() * 0.62f));
-    mono.setBounds   (util.removeFromLeft (64).reduced (2, 16));
-    bypass.setBounds (util.removeFromLeft (88).reduced (2, 10));
-    dim.setBounds    (util.removeFromLeft (64).reduced (2, 16));
-    qualityBar.setBounds (util.reduced (2, 18));
-    // width knob lives in the right panel output row, not the meter bar
+        bleed.setBounds ({});   // legacy — hidden
 
-    // ── FOOTER / BOTTOM STRIP ─────────────────────────────────────────────────
-    auto footer = footerBar.reduced (2, 4);
-    inputFader.setBounds   (footer.removeFromLeft (130).reduced (4, 2));
-    inputLrMeter.setBounds (footer.removeFromLeft (72).reduced (4, 2));
-    // preset & undo/redo in the center of footer
-    presets.setBounds      (footer.removeFromLeft (juce::jmax (200, footer.getWidth() / 3)).reduced (8, 16));
-    undoBtn.setBounds      (footer.removeFromLeft (52).reduced (6, 18));
-    redoBtn.setBounds      (footer.removeFromLeft (52).reduced (6, 18));
-    oversamplingLabel.setBounds (footer.removeFromRight (130).reduced (2, 18));
-    latencyLabel.setBounds      (footer.removeFromRight (120).reduced (2, 18));
-    outputLrMeter.setBounds (footer.removeFromRight (72).reduced (4, 2));
-    outputFader.setBounds   (footer.removeFromRight (130).reduced (4, 2));
+        if (ra.getHeight() >= 70)
+            outputKnob.setBounds (ra.withSizeKeepingCentre (
+                juce::jmin (ra.getWidth() - 8, 86), 86));
+    }
+
+    // ── EQ STRIP ─────────────────────────────────────────────────────────────
+    {
+        auto ea  = eqPanel.getBounds().reduced (panelPadding, 28);
+        const int kH = juce::jmin (56, ea.getHeight());
+
+        // Far left: saturation + transformer
+        {
+            auto ll  = ea.removeFromLeft (120);
+            const int hw = ll.getWidth() / 2;
+            saturation.setBounds  (juce::Rectangle<int> (ll.getX(),      ll.getY(), hw, kH).withSizeKeepingCentre (50, kH));
+            transformer.setBounds (juce::Rectangle<int> (ll.getX() + hw, ll.getY(), hw, kH).withSizeKeepingCentre (50, kH));
+        }
+
+        // Far right: limiter block (ceiling here — no duplicate)
+        {
+            auto lb = ea.removeFromRight (140);
+            limiter.setBounds (lb.removeFromTop (28).reduced (4, 2));
+            lb.removeFromTop (4);
+            ceiling.setBounds (lb.removeFromTop (juce::jmin (72, lb.getHeight())).withSizeKeepingCentre (56, 56));
+            limMeter.setBounds (lb.reduced (4, 2));
+        }
+
+        // Console / summing block
+        {
+            auto ca  = ea.removeFromLeft (140);
+            const int hw = ca.getWidth() / 2;
+            summing.setBounds (juce::Rectangle<int> (ca.getX(),      ca.getY(), hw, kH).withSizeKeepingCentre (50, kH));
+            glue.setBounds    (juce::Rectangle<int> (ca.getX() + hw, ca.getY(), hw, kH).withSizeKeepingCentre (50, kH));
+        }
+
+        // EQ display — remaining center space
+        eqDisplay.setBounds (ea.reduced (4, 0));
+        if (eqDisplay.isExpanded())
+            eqDisplay.setBounds (getLocalBounds().reduced (80, 60));
+    }
+
+    grMeter.setBounds ({});   // hidden — superseded by grHorizontalMeter
+
+    // ── METER STRIP (vintage horizontal VU meters) ────────────────────────────
+    {
+        auto ma      = meterStrip.reduced (2, 4);
+        auto qualRow = ma.removeFromBottom (22);
+        qualityBar.setBounds (qualRow);
+        inputVuMeter.setBounds      (ma.removeFromLeft (ma.getWidth() / 3).reduced (4, 6));
+        grHorizontalMeter.setBounds (ma.removeFromLeft (ma.getWidth() / 2).reduced (4, 6));
+        outputVuMeter.setBounds     (ma.reduced (4, 6));
+    }
+
+    // ── BOTTOM STRIP ─────────────────────────────────────────────────────────
+    {
+        auto fa = bottom.reduced (2, 4);
+        inputFader.setBounds    (fa.removeFromLeft (120).reduced (4, 2));
+        inputLrMeter.setBounds  (fa.removeFromLeft (66) .reduced (4, 2));
+        mono.setBounds          (fa.removeFromLeft (58) .reduced (4, 14));
+        bypass.setBounds        (fa.removeFromLeft (78) .reduced (4, 8));
+        dim.setBounds           (fa.removeFromLeft (58) .reduced (4, 14));
+        presets.setBounds       (fa.removeFromLeft (juce::jmax (180, fa.getWidth() / 3)).reduced (8, 14));
+        undoBtn.setBounds       (fa.removeFromLeft (48) .reduced (4, 16));
+        redoBtn.setBounds       (fa.removeFromLeft (48) .reduced (4, 16));
+        outputLrMeter.setBounds  (fa.removeFromRight (66) .reduced (4, 2));
+        outputFader.setBounds    (fa.removeFromRight (120).reduced (4, 2));
+        oversamplingLabel.setBounds (fa.removeFromRight (120).reduced (2, 16));
+        latencyLabel.setBounds      (fa.removeFromRight (110).reduced (2, 16));
+    }
 
     eqDisplay.toFront (false);
 }
 
 void StadiumAuraAudioProcessorEditor::timerCallback()
 {
-    // Keep input unmuted for the first ~2 s — JUCE's standalone audio device
+    // Keep input unmuted for the first ~3 s — JUCE's standalone audio device
     // state loads after the editor constructor and can silently re-mute input.
     if (startupUnmuteCountdown > 0)
     {
         --startupUnmuteCountdown;
         StandaloneAudio::forceUnmuteInput();
+
+        // At ~1 s after startup: try to auto-configure the input device.
+        // If no input device is found/activated, open the settings dialog.
+        if (startupUnmuteCountdown == 120 && ! startupAutoInputTriggered)
+        {
+            startupAutoInputTriggered = true;
+            const bool gotInput = StandaloneAudio::autoSelectDefaultInput();
+            if (! gotInput)
+                StandaloneAudio::showAudioSetup();
+        }
     }
 
     const auto in = processorRef.inputMeter.load (std::memory_order_relaxed);
@@ -607,6 +667,21 @@ void StadiumAuraAudioProcessorEditor::timerCallback()
     const auto tubeLevel = processorRef.tubeActivityMeter.load (std::memory_order_relaxed);
     const auto drive = processorRef.apvts.getRawParameterValue ("tubeDrive")->load();
     tubeChamber.setActivity (juce::jlimit (0.0f, 1.0f, tubeLevel * 0.72f + drive * 0.0028f));
+
+    // Distortion-reactive tube colour
+    const auto distLevel = juce::jlimit (0.0f, 1.0f,
+        (out > 0.90f ? (out - 0.90f) * 10.0f : 0.0f) + tubeLevel * 0.3f);
+    tubeChamber.setDistortionLevel (distLevel);
+
+    // Horizontal VU meters
+    inputVuMeter.setTargetDb  (juce::Decibels::gainToDecibels (in  + 1e-9f));
+    grHorizontalMeter.setTargetDb (-gr);
+    outputVuMeter.setTargetDb (juce::Decibels::gainToDecibels (out + 1e-9f));
+    inputVuMeter.setDistortionWarning (in  > 0.93f);
+    grHorizontalMeter.setDistortionWarning (gr > 14.0f);
+    outputVuMeter.setDistortionWarning (out > 0.93f || gr > 10.0f || tubeLevel > 0.88f);
+    grHorizontalMeter.setSaturation (juce::jlimit (0.0f, 1.0f, tubeLevel));
+
     updateEqDisplayState();
 
     presetCard.setText (processorRef.getProgramName (processorRef.getCurrentProgram()), juce::dontSendNotification);
