@@ -1,0 +1,3 @@
+/Users/studio/Documents/New project/build-aax/StadiumAura_artefacts/JuceLibraryCode/vst3_helper/CMakeFiles/vst3_helper.dir
+/Users/studio/Documents/New project/build-aax/StadiumAura_artefacts/JuceLibraryCode/vst3_helper/CMakeFiles/edit_cache.dir
+/Users/studio/Documents/New project/build-aax/StadiumAura_artefacts/JuceLibraryCode/vst3_helper/CMakeFiles/rebuild_cache.dir

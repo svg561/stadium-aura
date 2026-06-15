@@ -1,0 +1,18 @@
+Start testing: Jun 15 14:22 EDT
+----------------------------------------------------------
+1/1 Testing: StadiumAuraDSP
+1/1 Test: StadiumAuraDSP
+Command: "/Users/studio/Documents/New project/build-aax/StadiumAuraTests_artefacts/Release/StadiumAuraTests"
+Directory: /Users/studio/Documents/New project/build-aax
+"StadiumAuraDSP" start time: Jun 15 14:22 EDT
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   0.78 sec
+----------------------------------------------------------
+Test Passed.
+"StadiumAuraDSP" end time: Jun 15 14:22 EDT
+"StadiumAuraDSP" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Jun 15 14:22 EDT
