@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "AuraCompressorEngine.h"
 #include "CompressorSection.h"
 #include "EQProcessor.h"
 #include "MicCharacterProcessor.h"
@@ -76,6 +77,9 @@ struct AuraParameters
     bool sumSectionEnabled = true;
     bool masterSectionEnabled = true;
     std::array<EQBandState, 24> eqBands {};
+
+    // New compressor engine parameters
+    CompressorParams compressorParams;
 };
 
 class AuraProcessor
@@ -88,7 +92,8 @@ public:
     float getGainReductionDb() const noexcept { return compressor.getGainReductionDb() + busCompressor.getGainReductionDb(); }
     float getLimiterReductionDb() const noexcept { return limiter.getReductionDb(); }
     float getTubeActivity() const noexcept { return tubeActivity; }
-    int getLatencySamples() const noexcept { return limiter.getLatencySamples(); }
+    int   getLatencySamples() const noexcept { return limiter.getLatencySamples(); }
+    float getNewCompressorGainReductionDb() const noexcept { return compressorEngine.getGainReductionDb(); }
 
 private:
     struct MacroValues
@@ -117,6 +122,7 @@ private:
 
     juce::AudioBuffer<float> dryBuffer;
     juce::AudioBuffer<float> bypassDelayBuffer;
+    AuraCompressorEngine compressorEngine;
     EQProcessor eqProcessor;
     TransformerColor transformer;
     TransformerColor transformerHigh;

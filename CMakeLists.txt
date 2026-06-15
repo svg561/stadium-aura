@@ -49,6 +49,7 @@ target_sources(StadiumAura PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
     Source/dsp/AuraProcessor.cpp
+    Source/dsp/AuraCompressorEngine.cpp
     Source/dsp/EQBand.cpp
     Source/dsp/EQProcessor.cpp
     Source/dsp/MicCharacterProcessor.cpp
@@ -81,6 +82,7 @@ if (BUILD_TESTING)
     target_sources(StadiumAuraTests PRIVATE
         Tests/DspTests.cpp
         Source/dsp/AuraProcessor.cpp
+        Source/dsp/AuraCompressorEngine.cpp
         Source/dsp/EQBand.cpp
         Source/dsp/EQProcessor.cpp
         Source/dsp/MicCharacterProcessor.cpp

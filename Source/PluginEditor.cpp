@@ -62,19 +62,26 @@ StadiumAuraAudioProcessorEditor::StadiumAuraAudioProcessorEditor (StadiumAuraAud
         { &transformer, "transformer" }, { &summing, "summing" }, { &glue, "glue" },
         { &correction, "micCorrectionAmount" }, { &targetAmount, "micTargetAmount" }, { &badFreq, "badFrequencyTamer" },
         { &preampDrive, "preampDrive" }, { &aura, "aura" },
-        { &compAmount, "compressorAmount" }, { &compMakeup, "compMakeupDb" },
-        { &attack, "compAttackMs" }, { &release, "compReleaseMs" },
-        { &threshold, "compThresholdDb" }, { &ratio, "compRatio" }, { &bleed, "compBleedPercent" },
-        { &mix, "mix" }, { &width, "width" }, { &ceiling, "ceiling" }
+        // Compressor knobs re-wired to new COMP_* params (new engine)
+        { &compAmount,  "COMP_AMOUNT"   }, { &compMakeup, "COMP_MAKEUP"    },
+        { &attack,      "COMP_ATTACK"   }, { &release,    "COMP_RELEASE"   },
+        { &threshold,   "COMP_THRESHOLD"}, { &ratio,      "COMP_RATIO"     },
+        { &bleed,       "compBleedPercent" },  // legacy bleed kept on old param
+        { &mix, "mix" }, { &width, "width" }, { &ceiling, "ceiling" },
+        // New knobs
+        { &compInputKnob,     "COMP_INPUT"        },
+        { &compSidechainKnob, "COMP_SIDECHAIN_HPF"}
     };
     for (auto [slider, id] : sliders) attachSlider (*slider, id);
 
     attachButton (hardwareSafe, "hardwareSafeMode");
-    attachButton (compressorEnable, "compressorEnable");
+    attachButton (compressorEnable, "COMP_ENABLED");  // re-wired to new engine
     attachButton (limiter, "limiter");
     attachButton (bypass, "bypass");
     attachButton (mono, "monoCheck");
     attachButton (dim, "dim");
+    attachButton (emotionLockBtn, "EMOTION_LOCK_ENABLED");
+    attachButton (auraLevelBtn,   "COMP_AURA_LEVEL");
 
     attachCombo (sourceMic, "sourceMicMode", { "Unknown / Auto", "Dynamic General", "Condenser General",
         "Ribbon General", "57-Style Dynamic", "7B-Style Dynamic", "C80-Style Condenser", "Bright Condenser",
@@ -91,8 +98,17 @@ StadiumAuraAudioProcessorEditor::StadiumAuraAudioProcessorEditor (StadiumAuraAud
                      static_cast<juce::Component*> (&grMeter), static_cast<juce::Component*> (&limMeter),
                      static_cast<juce::Component*> (&vuMeter), static_cast<juce::Component*> (&tubeChamber),
                      static_cast<juce::Component*> (&eqDisplay), static_cast<juce::Component*> (&trackButtons),
-                     static_cast<juce::Component*> (&compModeButtons), static_cast<juce::Component*> (&qualityBar) })
+                     static_cast<juce::Component*> (&compModeButtons), static_cast<juce::Component*> (&qualityBar),
+                     static_cast<juce::Component*> (&compModelBar) })
         addAndMakeVisible (*c);
+
+    for (auto* label : { &emotionLockStatusLabel, &auraLevelStateLabel })
+    {
+        label->setFont (juce::FontOptions (9.5f, juce::Font::bold));
+        label->setColour (juce::Label::textColourId, juce::Colour (0xffc58a3d));
+        label->setJustificationType (juce::Justification::centredLeft);
+        addAndMakeVisible (*label);
+    }
 
     trackButtons.setChoices ({ "8", "16", "24", "32" });
     trackButtons.setSelectedIndex (2, juce::dontSendNotification);
@@ -104,6 +120,10 @@ StadiumAuraAudioProcessorEditor::StadiumAuraAudioProcessorEditor (StadiumAuraAud
     compModeButtons.setChoices ({ "FAST 76", "SMOOTH OPTO", "KID670" });
     compModeButtons.setSelectedIndex (1, juce::dontSendNotification);
     compModeButtons.onChange = [this] (int index) { setChoiceParameter ("compressorMode", index); };
+
+    compModelBar.setChoices ({ "Lightning FET", "Velvet Opto", "Crown Mu", "Punch Cell", "Glue Bus", "Modern Clean" });
+    compModelBar.setSelectedIndex (1, juce::dontSendNotification);
+    compModelBar.onChange = [this] (int i) { setChoiceParameter ("COMP_MODEL", i); };
 
     qualityBar.setChoices ({ "ECO", "NORMAL", "HIGH", "ULTRA" });
     qualityBar.setSelectedIndex (2, juce::dontSendNotification);
@@ -347,7 +367,7 @@ void StadiumAuraAudioProcessorEditor::applyRouteVisuals()
     preampDrive.setVisible (route == 0 || route == 1);
     threshold.setVisible (route == 2);
     ratio.setVisible (route == 2);
-    bleed.setVisible (route == 2);
+    bleed.setVisible (false);  // legacy bleed hidden; compInputKnob/compSidechainKnob take its row slot
 
     const char* routeNames[] { "MIC", "PRE", "COMP", "HARM", "SUM", "MASTR", "OUT" };
     for (int i = 0; i < 6; ++i)
@@ -471,21 +491,43 @@ void StadiumAuraAudioProcessorEditor::resized()
 
     // ── RIGHT / DYNAMICS PANEL ────────────────────────────────────────────────
     auto rightArea = rightPanel.getBounds().reduced (10, 30);
-    compModeButtons.setBounds (rightArea.removeFromTop (28));
-    rightArea.removeFromTop (6);
+
+    // Model bar (new engine — 6 models)
+    compModelBar.setBounds (rightArea.removeFromTop (28));
+    rightArea.removeFromTop (4);
+
+    // Legacy mode bar (smaller, secondary)
+    compModeButtons.setBounds (rightArea.removeFromTop (22));
+    rightArea.removeFromTop (4);
+
     auto vuArea = rightArea.removeFromRight (juce::roundToInt (rightArea.getWidth() * 0.42f));
     vuMode.setBounds         (vuArea.removeFromBottom (22).reduced (2));
     compressorEnable.setBounds (vuArea.removeFromBottom (24).reduced (2));
-    vuMeter.setBounds        (vuArea.reduced (2));
-    // Compressor knobs — two unique rows, no duplicates
-    auto compRow1 = rightArea.removeFromTop (82);
+
+    // Emotion Lock + Aura Level toggles above the VU meter
+    auto elRow = vuArea.removeFromBottom (22);
+    emotionLockBtn.setBounds (elRow.removeFromLeft (elRow.getWidth() / 2).reduced (2));
+    auraLevelBtn.setBounds   (elRow.reduced (2));
+    auto elLabelRow = vuArea.removeFromBottom (16);
+    emotionLockStatusLabel.setBounds (elLabelRow.removeFromLeft (elLabelRow.getWidth() / 2).reduced (2));
+    auraLevelStateLabel.setBounds    (elLabelRow.reduced (2));
+
+    vuMeter.setBounds (vuArea.reduced (2));
+
+    // Knob row 1: compAmount, compMakeup, attack, release
+    auto compRow1 = rightArea.removeFromTop (92);
     layoutKnobRow (compRow1, { &compAmount, &compMakeup, &attack, &release });
-    auto compRow2 = rightArea.removeFromTop (78);
-    layoutKnobRow (compRow2, { &threshold, &ratio, &bleed });
-    rightArea.removeFromTop (6);
-    // Output controls — ceiling lives in the EQ panel limiter block, not here
+
+    // Knob row 2: threshold, ratio, compInputKnob, compSidechainKnob
+    auto compRow2 = rightArea.removeFromTop (82);
+    layoutKnobRow (compRow2, { &threshold, &ratio, &compInputKnob, &compSidechainKnob });
+
+    rightArea.removeFromTop (4);
+
+    // Knob row 3: mix, width, ceiling
     auto outRow = rightArea.removeFromTop (78);
-    layoutKnobRow (outRow, { &mix, &width });
+    layoutKnobRow (outRow, { &mix, &width, &ceiling });
+
     if (rightArea.getHeight() >= 80)
         outputKnob.setBounds (rightArea.withSizeKeepingCentre (juce::jmin (rightArea.getWidth() - 8, 90), 90));
 
@@ -575,6 +617,26 @@ void StadiumAuraAudioProcessorEditor::timerCallback()
     trackButtons.setSelectedIndex (trackIndex - 1, juce::dontSendNotification);
     const auto compIndex = juce::jlimit (0, 2, static_cast<int> (processorRef.apvts.getRawParameterValue ("compressorMode")->load()));
     compModeButtons.setSelectedIndex (compIndex, juce::dontSendNotification);
+
+    const auto newCompIndex = juce::jlimit (0, 5, static_cast<int> (processorRef.apvts.getRawParameterValue ("COMP_MODEL")->load()));
+    compModelBar.setSelectedIndex (newCompIndex, juce::dontSendNotification);
+
+    // Emotion Lock and Aura Level visual feedback
+    const bool elEnabled = processorRef.apvts.getRawParameterValue ("EMOTION_LOCK_ENABLED")->load() > 0.5f;
+    emotionLockBtn.setAlpha (elEnabled ? 1.0f : 0.6f);
+    emotionLockStatusLabel.setText (elEnabled ? "Active" : "", juce::dontSendNotification);
+
+    const bool alEnabled = processorRef.apvts.getRawParameterValue ("COMP_AURA_LEVEL")->load() > 0.5f;
+    auraLevelBtn.setAlpha (alEnabled ? 1.0f : 0.6f);
+    auraLevelStateLabel.setText (alEnabled ? "Listening" : "", juce::dontSendNotification);
+
+    // Sync new GR from the new engine to the GR meter (override with new engine when active)
+    const bool newEngineOn = processorRef.apvts.getRawParameterValue ("COMP_ENABLED")->load() > 0.5f;
+    if (newEngineOn)
+    {
+        const float newGr = processorRef.newCompGainReduction.load (std::memory_order_relaxed);
+        grMeter.setTargetDb (newGr);
+    }
 
     const auto latencyMs = processorRef.getLatencySamples() * 1000.0 / processorRef.getSampleRate();
     latencyLabel.setText ("LATENCY: " + juce::String (latencyMs, 1) + " ms", juce::dontSendNotification);

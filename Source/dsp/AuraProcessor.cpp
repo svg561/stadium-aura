@@ -18,6 +18,7 @@ void AuraProcessor::prepare (double sampleRate, int maximumBlockSize, int channe
     widthProcessor.prepare (sampleRate);
     compressor.prepare (sampleRate);
     busCompressor.prepare (sampleRate);
+    compressorEngine.prepare (sampleRate, maximumBlockSize, channels);
     limiter.prepare (sampleRate, maximumBlockSize, channels);
     bypassDelayBuffer.setSize (channels, limiter.getLatencySamples() + 1, false, true, false);
     initialiseSmoothers (sampleRate);
@@ -36,6 +37,7 @@ void AuraProcessor::reset() noexcept
     widthProcessor.reset();
     compressor.reset();
     busCompressor.reset();
+    compressorEngine.reset();
     limiter.reset();
     bypassDelayPosition = 0;
     previousColourInput = { 0.0f, 0.0f };
@@ -367,7 +369,8 @@ void AuraProcessor::process (juce::AudioBuffer<float>& buffer, const AuraParamet
             attackValue = juce::jmap (fixedBlend, attackValue, fixedAttack);
             releaseValue = juce::jmap (fixedBlend, releaseValue, fixedRelease);
         }
-        const auto compressorGain = p.compressorEnabled
+        // When the new engine is enabled, bypass the legacy per-sample compressor
+        const auto compressorGain = (p.compressorEnabled && !p.compressorParams.enabled)
             ? compressor.processDetectorDetailed (detector, p.compressorMode, thresholdValue,
                                                   ratioValue, attackValue, releaseValue, sidechainHpfValue)
             : 1.0f;
@@ -414,6 +417,13 @@ void AuraProcessor::process (juce::AudioBuffer<float>& buffer, const AuraParamet
         buffer.setSample (0, sample, juce::jmap (wetMix, dryLeft, wetLeft));
         if (channels > 1)
             buffer.setSample (1, sample, juce::jmap (wetMix, dryRight, wetRight));
+    }
+
+    // New compressor engine — runs after analog colour, before digital EQ
+    if (p.compressorParams.enabled)
+    {
+        compressorEngine.updateParameters (p.compressorParams);
+        compressorEngine.processBlock (buffer);
     }
 
     // 24-band EQ — applied after the legacy EQ, before the limiter
