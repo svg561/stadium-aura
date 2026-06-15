@@ -1,5 +1,23 @@
+# Build outputs
 build/
+build-aax/
+StadiumAura_artefacts/
+*.a
+*.o
+*.dSYM
+DerivedData/
+
+# CMake
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+
+# Local tooling and backups
 .tools/
+_project-backups/
+*.bak
+
+# Dependencies / IDE
 third_party/AAX_SDK/
 .DS_Store
 *.xcodeproj/xcuserdata/
