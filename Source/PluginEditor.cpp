@@ -118,6 +118,7 @@ StadiumAuraAudioProcessorEditor::StadiumAuraAudioProcessorEditor (StadiumAuraAud
     {
         setEqNodeFromUi (band, normX, normY);
     };
+    eqDisplay.bindToParameters (processorRef.apvts);
 
     const char* routeTips[] {
         "Mic: Source Match + character. Right-click toggles mic DSP bypass.",
@@ -266,20 +267,19 @@ void StadiumAuraAudioProcessorEditor::setEqNodeFromUi (int band, float normX, fl
 
 void StadiumAuraAudioProcessorEditor::updateEqDisplayState()
 {
-    EqSpectrumComponent::BandValues values;
-    auto get = [this] (const char* id) { return processorRef.apvts.getRawParameterValue (id)->load(); };
-    values.enabled = get ("eqEnable") > 0.5f;
-    values.hpfHz = get ("eqHpfHz");
-    values.lowShelfHz = get ("eqLowShelfHz");
-    values.lowShelfGainDb = get ("eqLowShelfGainDb");
-    values.bellHz = get ("eqBellHz");
-    values.bellGainDb = get ("eqBellGainDb");
-    values.bellQ = get ("eqBellQ");
-    values.highShelfHz = get ("eqHighShelfHz");
-    values.highShelfGainDb = get ("eqHighShelfGainDb");
-    values.lpfHz = get ("eqLpfHz");
-    eqDisplay.setBandValues (values);
+    // Advance the spectrum FFT on the UI thread (audio thread only pushes samples)
+    processorRef.spectrumAnalyzer.processFFT();
+
+    // Push the latest FFT data into the EQ panel's own analyzer
+    const auto& mags = processorRef.spectrumAnalyzer.getMagnitudes();
+    eqDisplay.pushSpectrumSamples (nullptr, 0); // keep the internal fifo alive
+    eqDisplay.processSpectrumFFT();
+
+    // Read all 24-band parameters from APVTS and update the panel
+    eqDisplay.updateFromParameters (processorRef.apvts, processorRef.getSampleRate());
+    eqDisplay.setTone (processorRef.apvts.getRawParameterValue ("tone")->load() * 0.01f);
     eqDisplay.setAnalyzerLevels (processorRef.getAnalyzerSnapshot());
+    (void) mags;
 }
 
 void StadiumAuraAudioProcessorEditor::captureAbState (int slot)
@@ -565,7 +565,6 @@ void StadiumAuraAudioProcessorEditor::timerCallback()
     const auto tubeLevel = processorRef.tubeActivityMeter.load (std::memory_order_relaxed);
     const auto drive = processorRef.apvts.getRawParameterValue ("tubeDrive")->load();
     tubeChamber.setActivity (juce::jlimit (0.0f, 1.0f, tubeLevel * 0.72f + drive * 0.0028f));
-    eqDisplay.setTone (processorRef.apvts.getRawParameterValue ("tone")->load() * 0.01f);
     updateEqDisplayState();
 
     presetCard.setText (processorRef.getProgramName (processorRef.getCurrentProgram()), juce::dontSendNotification);

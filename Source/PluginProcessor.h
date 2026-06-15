@@ -3,6 +3,7 @@
 #include <JuceHeader.h>
 #include <atomic>
 #include "dsp/AuraProcessor.h"
+#include "dsp/EQBand.h"
 
 class StadiumAuraAudioProcessor final : public juce::AudioProcessor
 {
@@ -36,6 +37,10 @@ public:
     void setStateInformation (const void* data, int sizeInBytes) override;
 
     juce::AudioProcessorValueTreeState apvts;
+
+    // Spectrum analyzer — written from audio thread, read from UI thread
+    SpectrumAnalyzer spectrumAnalyzer;
+
     std::atomic<float> inputMeter { 0.0f };
     std::atomic<float> inputLeftMeter { 0.0f };
     std::atomic<float> inputRightMeter { 0.0f };
