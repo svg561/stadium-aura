@@ -253,9 +253,8 @@ void AuraProcessor::process (juce::AudioBuffer<float>& buffer, const AuraParamet
     masterEnable.setTargetValue (p.masterSectionEnabled ? 1.0f : 0.0f);
 
     float blockTubePeak = 0.0f;
-    // When AURA BIG is active (amount > 0.001 && !globalBypass), skip legacy aura macro
-    // contributions so tubeDrive/saturation/transformer/glue are not doubled. At default
-    // amount=0 the legacy aura knob behaves exactly as before.
+    // Center hero knob drives AURA_BIG_AMOUNT; legacy "aura" APVTS param remains for presets/automation.
+    // When AURA BIG is active, zero legacy macro so tube/saturation/transformer/glue are not doubled.
     const bool auraBigActive = p.auraBigParams.amount > 0.001f && ! p.auraBigParams.globalBypass;
 
     for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
