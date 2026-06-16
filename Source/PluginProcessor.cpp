@@ -1,6 +1,13 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include "dsp/EQBand.h"
+#include "dsp/AuraCompressorEngine.h"
+#include "dsp/AuraMicCharacterEngine.h"
+#include "ui/EQPanel.h"
+
+// Set to true to bypass all DSP and pass mic input directly to output.
+// Flip to false once standalone audio I/O is confirmed working.
+static constexpr bool FORCE_RAW_PASSTHROUGH = false;
 
 namespace Param
 {
@@ -37,6 +44,42 @@ constexpr auto preampSectionEnable = "preampSectionEnable";
 constexpr auto harmonicsSectionEnable = "harmonicsSectionEnable";
 constexpr auto sumSectionEnable = "sumSectionEnable";
 constexpr auto masterSectionEnable = "masterSectionEnable";
+constexpr auto auraBigBypass = "AURA_BIG_BYPASS";
+constexpr auto auraBigAmount = "AURA_BIG_AMOUNT";
+constexpr auto auraBigInput = "AURA_BIG_INPUT";
+constexpr auto auraBigOutput = "AURA_BIG_OUTPUT";
+constexpr auto auraBigTone = "AURA_BIG_TONE";
+constexpr auto auraBigTube = "AURA_BIG_TUBE";
+constexpr auto auraBigTransistor = "AURA_BIG_TRANSISTOR";
+constexpr auto auraBigTransformer = "AURA_BIG_TRANSFORMER";
+constexpr auto auraBigDensity = "AURA_BIG_DENSITY";
+constexpr auto auraBigAir = "AURA_BIG_AIR";
+constexpr auto auraBigWidth = "AURA_BIG_WIDTH";
+constexpr auto auraBigLimiter = "AURA_BIG_LIMITER";
+constexpr auto auraBigSafe = "AURA_BIG_SAFE";
+constexpr auto auraBigInputBypass = "AURA_BIG_INPUT_BYPASS";
+constexpr auto auraBigToneBypass = "AURA_BIG_TONE_BYPASS";
+constexpr auto auraBigTubeBypass = "AURA_BIG_TUBE_BYPASS";
+constexpr auto auraBigTransistorBypass = "AURA_BIG_TRANSISTOR_BYPASS";
+constexpr auto auraBigTransformerBypass = "AURA_BIG_TRANSFORMER_BYPASS";
+constexpr auto auraBigDensityBypass = "AURA_BIG_DENSITY_BYPASS";
+constexpr auto auraBigAirBypass = "AURA_BIG_AIR_BYPASS";
+constexpr auto auraBigWidthBypass = "AURA_BIG_WIDTH_BYPASS";
+constexpr auto auraBigLimiterBypass = "AURA_BIG_LIMITER_BYPASS";
+constexpr auto eqGlobalBypass = "EQ_GLOBAL_BYPASS";
+constexpr auto micCharEnabled = "MIC_CHAR_ENABLED";
+constexpr auto micCharBypass = "MIC_CHAR_BYPASS";
+constexpr auto micCharProfile = "MIC_CHAR_PROFILE";
+constexpr auto micCharInputTrim = "MIC_CHAR_INPUT_TRIM";
+constexpr auto micCharProximity = "MIC_CHAR_PROXIMITY";
+constexpr auto micCharBody = "MIC_CHAR_BODY";
+constexpr auto micCharPresence = "MIC_CHAR_PRESENCE";
+constexpr auto micCharAir = "MIC_CHAR_AIR";
+constexpr auto micCharDeHarsh = "MIC_CHAR_DEHARSH";
+constexpr auto micCharSibilance = "MIC_CHAR_SIBILANCE";
+constexpr auto micCharColor = "MIC_CHAR_COLOR";
+constexpr auto micCharOutputTrim = "MIC_CHAR_OUTPUT_TRIM";
+constexpr auto micCharSimpleMode = "MIC_CHAR_SIMPLE_MODE";
 }
 
 StadiumAuraAudioProcessor::StadiumAuraAudioProcessor()
@@ -115,6 +158,23 @@ juce::AudioProcessorValueTreeState::ParameterLayout StadiumAuraAudioProcessor::c
     layout.add (std::make_unique<Choice> (Param::compTimingMode, "Compressor Timing", juce::StringArray { "Manual", "Fixed", "Fixed / Manual" }, 0));
     layout.add (std::make_unique<Choice> (Param::vuMeterMode, "VU Meter Mode", juce::StringArray { "Input", "Gain Reduction", "Output" }, 1));
     layout.add (std::make_unique<Bool> (Param::micSectionEnable, "Mic Section Enable", true));
+
+    layout.add (std::make_unique<Bool> (Param::micCharEnabled, "Mic Character Enable", true));
+    layout.add (std::make_unique<Bool> (Param::micCharBypass, "Mic Character Bypass", false));
+    layout.add (std::make_unique<Choice> (Param::micCharProfile, "Mic Character Profile", juce::StringArray {
+        "Aura Vintage 87", "Aura Silk Tube", "Aura Golden 251", "Aura Crystal 12", "Aura Broadcast 7",
+        "Aura Modern Pop", "Aura Warm Rap", "Aura Female Air", "Aura Male Body", "Aura Clean Capture" }, 0));
+    layout.add (std::make_unique<Float> (Param::micCharInputTrim, "Mic Input Trim", juce::NormalisableRange<float> (-12.0f, 12.0f, 0.01f), 0.0f, "dB", juce::AudioProcessorParameter::genericParameter, db));
+    layout.add (std::make_unique<Float> (Param::micCharProximity, "Mic Proximity", juce::NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f));
+    layout.add (std::make_unique<Float> (Param::micCharBody, "Mic Body", juce::NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f));
+    layout.add (std::make_unique<Float> (Param::micCharPresence, "Mic Presence", juce::NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f));
+    layout.add (std::make_unique<Float> (Param::micCharAir, "Mic Air", juce::NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f));
+    layout.add (std::make_unique<Float> (Param::micCharDeHarsh, "Mic De-Harsh", juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.25f));
+    layout.add (std::make_unique<Float> (Param::micCharSibilance, "Mic Sibilance Guard", juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.20f));
+    layout.add (std::make_unique<Float> (Param::micCharColor, "Mic Color", juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.12f));
+    layout.add (std::make_unique<Float> (Param::micCharOutputTrim, "Mic Output Trim", juce::NormalisableRange<float> (-12.0f, 12.0f, 0.01f), 0.0f, "dB", juce::AudioProcessorParameter::genericParameter, db));
+    layout.add (std::make_unique<Bool> (Param::micCharSimpleMode, "Mic Simple Mode", true));
+
     layout.add (std::make_unique<Bool> (Param::preampSectionEnable, "Preamp Section Enable", true));
     layout.add (std::make_unique<Bool> (Param::harmonicsSectionEnable, "Harmonics Section Enable", true));
     layout.add (std::make_unique<Bool> (Param::sumSectionEnable, "Sum Section Enable", true));
@@ -165,6 +225,106 @@ juce::AudioProcessorValueTreeState::ParameterLayout StadiumAuraAudioProcessor::c
             "ms", juce::AudioProcessorParameter::genericParameter, milliseconds));
     }
 
+    // ── New compressor engine parameters (COMP_* / EMOTION_LOCK_*) ──────────────
+    auto ratio01  = [] (float v, int) { return juce::String (v, 2) + ":1"; };
+    layout.add (std::make_unique<Bool>   ("COMP_ENABLED",          "Comp Engine Enable",          true));
+    layout.add (std::make_unique<Bool>   ("COMP_BYPASS",           "Comp Bypass",                 false));
+    layout.add (std::make_unique<Choice> ("COMP_MODEL",            "Comp Model",
+        juce::StringArray { "Aura 2A", "Aura 76", "Aura Tube", "Aura Limiter", "Aura Density", "Aura Drums" }, 0));
+    layout.add (std::make_unique<Choice> ("COMP_PROFILE",          "Comp Profile",
+        juce::StringArray { "Profile 1", "Profile 2", "Profile 3", "Profile 4", "Profile 5", "Profile 6" }, 0));
+    layout.add (std::make_unique<Choice> ("COMP_TIMING_MODE",      "Comp Timing Mode",
+        juce::StringArray { "Fixed", "Manual", "Hybrid" }, 0));
+    layout.add (std::make_unique<Choice> ("COMP_SC_HPF_MODE",      "Comp SC HPF Mode",
+        juce::StringArray { "Off", "80 Hz", "150 Hz", "220 Hz" }, 0));
+    layout.add (std::make_unique<Float>  ("COMP_INPUT",            "Comp Input",
+        juce::NormalisableRange<float> (-24.0f, 24.0f, 0.01f), 0.0f,    "dB",  juce::AudioProcessorParameter::genericParameter, db));
+    layout.add (std::make_unique<Float>  ("COMP_THRESHOLD",        "Comp Threshold",
+        juce::NormalisableRange<float> (-60.0f, 0.0f, 0.01f), -24.0f,   "dB",  juce::AudioProcessorParameter::genericParameter, db));
+    layout.add (std::make_unique<Float>  ("COMP_AMOUNT",           "Comp Amount",
+        juce::NormalisableRange<float> (0.0f, 100.0f, 0.01f), 50.0f,    "%",   juce::AudioProcessorParameter::genericParameter, percent));
+    layout.add (std::make_unique<Float>  ("COMP_RATIO",            "Comp Ratio",
+        juce::NormalisableRange<float> (1.0f, 20.0f, 0.01f, 0.4f), 3.0f, "",   juce::AudioProcessorParameter::genericParameter, ratio01));
+    layout.add (std::make_unique<Float>  ("COMP_ATTACK",           "Comp Attack",
+        juce::NormalisableRange<float> (0.02f, 100.0f, 0.01f, 0.3f), 10.0f, "ms", juce::AudioProcessorParameter::genericParameter, milliseconds));
+    layout.add (std::make_unique<Float>  ("COMP_RELEASE",          "Comp Release",
+        juce::NormalisableRange<float> (20.0f, 5000.0f, 0.1f, 0.3f), 300.0f, "ms", juce::AudioProcessorParameter::genericParameter, milliseconds));
+    layout.add (std::make_unique<Float>  ("COMP_MAKEUP",           "Comp Makeup",
+        juce::NormalisableRange<float> (-12.0f, 24.0f, 0.01f), 0.0f,    "dB",  juce::AudioProcessorParameter::genericParameter, db));
+    layout.add (std::make_unique<Float>  ("COMP_MIX",              "Comp Mix",
+        juce::NormalisableRange<float> (0.0f, 100.0f, 0.01f), 100.0f,   "%",   juce::AudioProcessorParameter::genericParameter, percent));
+    layout.add (std::make_unique<Float>  ("COMP_SIDECHAIN_HPF",    "Comp SC HPF",
+        juce::NormalisableRange<float> (20.0f, 300.0f, 0.1f, 0.3f), 90.0f, "Hz", juce::AudioProcessorParameter::genericParameter, hz));
+    layout.add (std::make_unique<Bool>   ("COMP_AUTO_GAIN",        "Comp Auto Gain",              false));
+    layout.add (std::make_unique<Bool>   ("COMP_AURA_LEVEL",       "Aura Level",                  false));
+    layout.add (std::make_unique<Choice> ("COMP_DETECTOR_MODE",    "Comp Detector",
+        juce::StringArray { "Peak", "RMS", "Vocal Focus", "Mid", "Side" }, 1));
+    layout.add (std::make_unique<Bool>   ("COMP_LINK",             "Comp Stereo Link",            true));
+    layout.add (std::make_unique<Float>  ("COMP_SATURATION",       "Comp Saturation",
+        juce::NormalisableRange<float> (0.0f, 100.0f, 0.01f), 0.0f,     "%",   juce::AudioProcessorParameter::genericParameter, percent));
+    layout.add (std::make_unique<Float>  ("COMP_DRIVE",            "Comp Drive",
+        juce::NormalisableRange<float> (0.0f, 100.0f, 0.01f), 0.0f,     "%",   juce::AudioProcessorParameter::genericParameter, percent));
+    layout.add (std::make_unique<Float>  ("COMP_DENSITY",          "Comp Density",
+        juce::NormalisableRange<float> (0.0f, 100.0f, 0.01f), 0.0f,     "%",   juce::AudioProcessorParameter::genericParameter, percent));
+    layout.add (std::make_unique<Float>  ("COMP_WARMTH",           "Comp Warmth",
+        juce::NormalisableRange<float> (0.0f, 100.0f, 0.01f), 0.0f,     "%",   juce::AudioProcessorParameter::genericParameter, percent));
+    layout.add (std::make_unique<Float>  ("COMP_CEILING",          "Comp Ceiling",
+        juce::NormalisableRange<float> (-6.0f, 0.0f, 0.01f), -0.5f,    "dB",  juce::AudioProcessorParameter::genericParameter, db));
+
+    layout.add (std::make_unique<Bool>   ("EMOTION_LOCK_ENABLED",          "Emotion Lock Enable",    false));
+    layout.add (std::make_unique<Float>  ("EMOTION_LOCK_AMOUNT",           "Emotion Lock Amount",
+        juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.5f));
+    layout.add (std::make_unique<Float>  ("EMOTION_LOCK_BREATH_PROTECT",   "Emotion Lock Breath",
+        juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.35f));
+    layout.add (std::make_unique<Float>  ("EMOTION_LOCK_PRESENCE_PROTECT", "Emotion Lock Presence",
+        juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.5f));
+    layout.add (std::make_unique<Float>  ("EMOTION_LOCK_AIR_PROTECT",      "Emotion Lock Air",
+        juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.35f));
+    layout.add (std::make_unique<Float>  ("EMOTION_LOCK_HARSH_TAME",       "Emotion Lock Harsh",
+        juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.3f));
+    layout.add (std::make_unique<Float>  ("EMOTION_LOCK_POCKET_LOCK",      "Emotion Lock Pocket",
+        juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.4f));
+    layout.add (std::make_unique<Float>  ("EMOTION_LOCK_INTENSITY",        "Emotion Lock Intensity",
+        juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.5f));
+
+    // Global EQ bypass (visual + audio passthrough flag for the expanded EQ panel)
+    layout.add (std::make_unique<Bool> (Param::eqGlobalBypass, "EQ Global Bypass", false));
+
+    // ── AURA BIG parameters ──────────────────────────────────────────────────────
+    layout.add (std::make_unique<Bool>   (Param::auraBigBypass, "AURA BIG Bypass", false));
+    layout.add (std::make_unique<Float>  (Param::auraBigAmount, "AURA BIG Amount",
+        juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.0f));
+    layout.add (std::make_unique<Float>  (Param::auraBigInput, "AURA BIG Input",
+        juce::NormalisableRange<float> (-12.0f, 12.0f, 0.01f), 0.0f, "dB", juce::AudioProcessorParameter::genericParameter, db));
+    layout.add (std::make_unique<Float>  (Param::auraBigOutput, "AURA BIG Output",
+        juce::NormalisableRange<float> (-12.0f, 12.0f, 0.01f), 0.0f, "dB", juce::AudioProcessorParameter::genericParameter, db));
+    layout.add (std::make_unique<Float>  (Param::auraBigTone, "AURA BIG Tone",
+        juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.35f));
+    layout.add (std::make_unique<Float>  (Param::auraBigTube, "AURA BIG Tube",
+        juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.35f));
+    layout.add (std::make_unique<Float>  (Param::auraBigTransistor, "AURA BIG Transistor",
+        juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.20f));
+    layout.add (std::make_unique<Float>  (Param::auraBigTransformer, "AURA BIG Transformer",
+        juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.30f));
+    layout.add (std::make_unique<Float>  (Param::auraBigDensity, "AURA BIG Density",
+        juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.40f));
+    layout.add (std::make_unique<Float>  (Param::auraBigAir, "AURA BIG Air",
+        juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.30f));
+    layout.add (std::make_unique<Float>  (Param::auraBigWidth, "AURA BIG Width",
+        juce::NormalisableRange<float> (0.0f, 0.35f, 0.001f), 0.12f));
+    layout.add (std::make_unique<Float>  (Param::auraBigLimiter, "AURA BIG Limiter",
+        juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.50f));
+    layout.add (std::make_unique<Bool>   (Param::auraBigSafe, "AURA BIG Safe", true));
+    layout.add (std::make_unique<Bool>   (Param::auraBigInputBypass, "AURA BIG Input Bypass", false));
+    layout.add (std::make_unique<Bool>   (Param::auraBigToneBypass, "AURA BIG Tone Bypass", false));
+    layout.add (std::make_unique<Bool>   (Param::auraBigTubeBypass, "AURA BIG Tube Bypass", false));
+    layout.add (std::make_unique<Bool>   (Param::auraBigTransistorBypass, "AURA BIG Transistor Bypass", false));
+    layout.add (std::make_unique<Bool>   (Param::auraBigTransformerBypass, "AURA BIG Transformer Bypass", false));
+    layout.add (std::make_unique<Bool>   (Param::auraBigDensityBypass, "AURA BIG Density Bypass", false));
+    layout.add (std::make_unique<Bool>   (Param::auraBigAirBypass, "AURA BIG Air Bypass", false));
+    layout.add (std::make_unique<Bool>   (Param::auraBigWidthBypass, "AURA BIG Width Bypass", false));
+    layout.add (std::make_unique<Bool>   (Param::auraBigLimiterBypass, "AURA BIG Limiter Bypass", false));
+
     return layout;
 }
 
@@ -180,8 +340,12 @@ bool StadiumAuraAudioProcessor::isBusesLayoutSupported (const BusesLayout& layou
 {
     const auto input = layouts.getMainInputChannelSet();
     const auto output = layouts.getMainOutputChannelSet();
-    return (output == juce::AudioChannelSet::mono() || output == juce::AudioChannelSet::stereo())
-        && (input == output || (input == juce::AudioChannelSet::mono() && output == juce::AudioChannelSet::stereo()));
+    if (output != juce::AudioChannelSet::mono() && output != juce::AudioChannelSet::stereo())
+        return false;
+    // Also accept disabled input so the standalone can open before a mic is selected.
+    return input == juce::AudioChannelSet::disabled()
+        || input == output
+        || (input == juce::AudioChannelSet::mono() && output == juce::AudioChannelSet::stereo());
 }
 
 void StadiumAuraAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
@@ -195,11 +359,61 @@ void StadiumAuraAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, 
     inputMeter.store (peakForBuffer (buffer), std::memory_order_relaxed);
     inputLeftMeter.store (peakForChannel (buffer, 0), std::memory_order_relaxed);
     inputRightMeter.store (peakForChannel (buffer, juce::jmin (1, buffer.getNumChannels() - 1)), std::memory_order_relaxed);
+
+    DBG ("INPUT RMS: " + juce::String (buffer.getMagnitude (0, 0, buffer.getNumSamples())));
+
+    if (FORCE_RAW_PASSTHROUGH)
+    {
+        // Raw pass-through active: buffer goes unmodified from input to output.
+        outputMeter.store (peakForBuffer (buffer), std::memory_order_relaxed);
+        outputLeftMeter.store (peakForChannel (buffer, 0), std::memory_order_relaxed);
+        outputRightMeter.store (peakForChannel (buffer, juce::jmin (1, buffer.getNumChannels() - 1)), std::memory_order_relaxed);
+        gainReductionMeter.store (0.0f, std::memory_order_relaxed);
+        newCompGainReduction.store (0.0f, std::memory_order_relaxed);
+        newCompTargetGr.store (0.0f, std::memory_order_relaxed);
+        limiterReductionMeter.store (0.0f, std::memory_order_relaxed);
+        tubeActivityMeter.store (0.0f, std::memory_order_relaxed);
+        updateAnalyzer (buffer);
+        if (buffer.getNumChannels() > 0 && buffer.getNumSamples() > 0)
+            spectrumAnalyzer.pushSamples (buffer.getReadPointer (0), buffer.getNumSamples());
+        return;
+    }
+
     auraProcessor.process (buffer, readParameters());
+    auraBigSweetSpotState.store (static_cast<int> (auraProcessor.getAuraBigSweetSpotState()), std::memory_order_relaxed);
+    auraBigInputRmsDb.store (auraProcessor.getAuraBigInputRmsDb(), std::memory_order_relaxed);
+    auraBigInputPeakDb.store (auraProcessor.getAuraBigInputPeakDb(), std::memory_order_relaxed);
+    auraBigTubeHeat.store (auraProcessor.getAuraBigTubeHeat(), std::memory_order_relaxed);
+    auraBigEdgeHeat.store (auraProcessor.getAuraBigEdgeHeat(), std::memory_order_relaxed);
+    auraBigIronHeat.store (auraProcessor.getAuraBigIronHeat(), std::memory_order_relaxed);
+    const auto auraBigVisual = auraProcessor.getAuraBigVisualState();
+    auraBigGlobalHeat.store (auraBigVisual.globalHeat, std::memory_order_relaxed);
+    auraBigLimiterGrDb.store (auraBigVisual.limiterGrDb, std::memory_order_relaxed);
+    auraBigClipping.store (auraBigVisual.clipping, std::memory_order_relaxed);
+    auraBigStageIn.store (auraBigVisual.stageIn, std::memory_order_relaxed);
+    auraBigStageTone.store (auraBigVisual.stageTone, std::memory_order_relaxed);
+    auraBigStageTube.store (auraBigVisual.stageTube, std::memory_order_relaxed);
+    auraBigStageEdge.store (auraBigVisual.stageEdge, std::memory_order_relaxed);
+    auraBigStageIron.store (auraBigVisual.stageIron, std::memory_order_relaxed);
+    auraBigStageDensity.store (auraBigVisual.stageDensity, std::memory_order_relaxed);
+    auraBigStageAir.store (auraBigVisual.stageAir, std::memory_order_relaxed);
+    auraBigStageWidth.store (auraBigVisual.stageWidth, std::memory_order_relaxed);
+    auraBigStageLimit.store (auraBigVisual.stageLimit, std::memory_order_relaxed);
+    auraBigBypassIn.store (auraBigVisual.bypassIn, std::memory_order_relaxed);
+    auraBigBypassTone.store (auraBigVisual.bypassTone, std::memory_order_relaxed);
+    auraBigBypassTube.store (auraBigVisual.bypassTube, std::memory_order_relaxed);
+    auraBigBypassEdge.store (auraBigVisual.bypassEdge, std::memory_order_relaxed);
+    auraBigBypassIron.store (auraBigVisual.bypassIron, std::memory_order_relaxed);
+    auraBigBypassDensity.store (auraBigVisual.bypassDensity, std::memory_order_relaxed);
+    auraBigBypassAir.store (auraBigVisual.bypassAir, std::memory_order_relaxed);
+    auraBigBypassWidth.store (auraBigVisual.bypassWidth, std::memory_order_relaxed);
+    auraBigBypassLimit.store (auraBigVisual.bypassLimit, std::memory_order_relaxed);
     outputMeter.store (peakForBuffer (buffer), std::memory_order_relaxed);
     outputLeftMeter.store (peakForChannel (buffer, 0), std::memory_order_relaxed);
     outputRightMeter.store (peakForChannel (buffer, juce::jmin (1, buffer.getNumChannels() - 1)), std::memory_order_relaxed);
     gainReductionMeter.store (-auraProcessor.getGainReductionDb(), std::memory_order_relaxed);
+    newCompGainReduction.store (auraProcessor.getNewCompressorGainReductionDb(), std::memory_order_relaxed);
+    newCompTargetGr.store (auraProcessor.getNewCompressorTargetGrDb(), std::memory_order_relaxed);
     limiterReductionMeter.store (-auraProcessor.getLimiterReductionDb(), std::memory_order_relaxed);
     tubeActivityMeter.store (auraProcessor.getTubeActivity(), std::memory_order_relaxed);
     updateAnalyzer (buffer);
@@ -256,6 +470,30 @@ AuraParameters StadiumAuraAudioProcessor::readParameters() const noexcept
     p.bypassed = get (Param::bypass) > 0.5f; p.dimmed = get (Param::dim) > 0.5f;
     p.quality = static_cast<int> (get (Param::quality));
     p.micSectionEnabled = get (Param::micSectionEnable) > 0.5f;
+
+    const auto profileIndex = juce::jlimit (0, kNumAuraMicProfiles - 1, static_cast<int> (get (Param::micCharProfile)));
+    const auto& micProfile = AuraMicCharacterEngine::auraMicProfiles[profileIndex];
+    const auto bodyMacro = get (Param::micCharBody);
+    const auto presenceMacro = get (Param::micCharPresence);
+    const auto airMacro = get (Param::micCharAir);
+    const auto proximityMacro = get (Param::micCharProximity);
+    p.micCharacterParams.enabled = get (Param::micCharEnabled) > 0.5f;
+    p.micCharacterParams.bypass = get (Param::micCharBypass) > 0.5f;
+    p.micCharacterParams.profileIndex = profileIndex;
+    p.micCharacterParams.inputTrimDb = micProfile.inputTrimDb + get (Param::micCharInputTrim);
+    p.micCharacterParams.proximity = proximityMacro;
+    p.micCharacterParams.bodyDb = micProfile.bodyDb + bodyMacro * 2.5f;
+    p.micCharacterParams.mudDb = micProfile.mudDb + bodyMacro * -0.4f;
+    p.micCharacterParams.presenceDb = micProfile.presenceDb + presenceMacro * 2.5f;
+    p.micCharacterParams.airDb = micProfile.airDb + airMacro * 2.5f;
+    p.micCharacterParams.deHarsh = get (Param::micCharDeHarsh);
+    p.micCharacterParams.sibilanceGuard = get (Param::micCharSibilance);
+    p.micCharacterParams.colorAmount = get (Param::micCharColor);
+    p.micCharacterParams.outputTrimDb = micProfile.outputTrimDb + get (Param::micCharOutputTrim);
+    p.micCharacterParams.lowCutHz = juce::jlimit (35.0f, 180.0f,
+        micProfile.lowCutHz - proximityMacro * 25.0f + micProfile.proximityDb * 8.0f);
+    p.micCharacterParams.simpleMode = get (Param::micCharSimpleMode) > 0.5f;
+
     p.preampSectionEnabled = get (Param::preampSectionEnable) > 0.5f;
     p.harmonicsSectionEnabled = get (Param::harmonicsSectionEnable) > 0.5f;
     p.sumSectionEnabled = get (Param::sumSectionEnable) > 0.5f;
@@ -281,6 +519,78 @@ AuraParameters StadiumAuraAudioProcessor::readParameters() const noexcept
         s.attackMs        = apvts.getRawParameterValue (pfx + "ATTACK")->load();
         s.releaseMs       = apvts.getRawParameterValue (pfx + "RELEASE")->load();
     }
+
+    // ── New compressor engine params ─────────────────────────────────────────────
+    p.compressorParams.enabled      = get ("COMP_ENABLED") > 0.5f;
+    p.compressorParams.bypass       = get ("COMP_BYPASS") > 0.5f;
+    p.compressorParams.model        = static_cast<AuraCompressorModel> (juce::jlimit (0, 5, static_cast<int> (get ("COMP_MODEL"))));
+    p.compressorParams.profile      = juce::jlimit (0, getAuraCompressorProfileCount (p.compressorParams.model) - 1,
+                                                      static_cast<int> (get ("COMP_PROFILE")));
+    p.compressorParams.timingMode   = static_cast<AuraTimingMode> (juce::jlimit (0, 2, static_cast<int> (get ("COMP_TIMING_MODE"))));
+    p.compressorParams.inputGainDb  = get ("COMP_INPUT");
+    p.compressorParams.inputDb      = p.compressorParams.inputGainDb;
+    p.compressorParams.thresholdDb  = get ("COMP_THRESHOLD");
+    p.compressorParams.amount       = get ("COMP_AMOUNT") * 0.01f;
+    p.compressorParams.ratio        = get ("COMP_RATIO");
+    p.compressorParams.attackMs     = get ("COMP_ATTACK");
+    p.compressorParams.releaseMs    = get ("COMP_RELEASE");
+    p.compressorParams.outputGainDb = get ("COMP_MAKEUP");
+    p.compressorParams.makeupDb     = p.compressorParams.outputGainDb;
+    p.compressorParams.mix          = get ("COMP_MIX") * 0.01f;
+    p.compressorParams.drive        = get ("COMP_DRIVE") * 0.01f;
+    p.compressorParams.density      = get ("COMP_DENSITY") * 0.01f;
+    p.compressorParams.warmth       = get ("COMP_WARMTH") * 0.01f;
+    p.compressorParams.ceilingDb    = get ("COMP_CEILING");
+    {
+        static const float hpfTable[] { 0.0f, 80.0f, 150.0f, 220.0f };
+        const int hpfMode = juce::jlimit (0, 3, static_cast<int> (get ("COMP_SC_HPF_MODE")));
+        p.compressorParams.sidechainHpfHz = hpfTable[static_cast<size_t> (hpfMode)];
+        if (hpfMode == 0)
+            p.compressorParams.sidechainHpfHz = get ("COMP_SIDECHAIN_HPF") > 20.0f ? get ("COMP_SIDECHAIN_HPF") : 0.0f;
+    }
+    p.compressorParams.sidechainHPF = get ("COMP_SIDECHAIN_HPF");
+    p.compressorParams.autoGain     = get ("COMP_AUTO_GAIN") > 0.5f;
+    p.compressorParams.auraLevel    = get ("COMP_AURA_LEVEL") > 0.5f;
+    p.compressorParams.detectorMode = static_cast<CompressorParams::DetectorMode> (
+        juce::jlimit (0, 4, static_cast<int> (get ("COMP_DETECTOR_MODE"))));
+    p.compressorParams.linkedStereo = get ("COMP_LINK") > 0.5f;
+    p.compressorParams.saturation   = get ("COMP_SATURATION") * 0.01f;
+    p.compressorParams.targetGrDb   = 0.0f;
+
+    p.compressorParams.emotionLock.enabled         = get ("EMOTION_LOCK_ENABLED") > 0.5f;
+    p.compressorParams.emotionLock.amount          = get ("EMOTION_LOCK_AMOUNT");
+    p.compressorParams.emotionLock.breathProtect   = get ("EMOTION_LOCK_BREATH_PROTECT");
+    p.compressorParams.emotionLock.presenceProtect = get ("EMOTION_LOCK_PRESENCE_PROTECT");
+    p.compressorParams.emotionLock.airProtect      = get ("EMOTION_LOCK_AIR_PROTECT");
+    p.compressorParams.emotionLock.harshTame       = get ("EMOTION_LOCK_HARSH_TAME");
+    p.compressorParams.emotionLock.pocketLock      = get ("EMOTION_LOCK_POCKET_LOCK");
+    p.compressorParams.emotionLock.intensity       = get ("EMOTION_LOCK_INTENSITY");
+
+    p.eqGlobalBypass = get (Param::eqGlobalBypass) > 0.5f;
+
+    auto& ab = p.auraBigParams;
+    ab.globalBypass       = get (Param::auraBigBypass) > 0.5f;
+    ab.amount             = get (Param::auraBigAmount);
+    ab.inputDb            = get (Param::auraBigInput);
+    ab.outputDb           = get (Param::auraBigOutput);
+    ab.tone               = get (Param::auraBigTone);
+    ab.tube               = get (Param::auraBigTube);
+    ab.transistor         = get (Param::auraBigTransistor);
+    ab.transformer        = get (Param::auraBigTransformer);
+    ab.density            = get (Param::auraBigDensity);
+    ab.air                = get (Param::auraBigAir);
+    ab.width              = get (Param::auraBigWidth);
+    ab.limiter            = get (Param::auraBigLimiter);
+    ab.safe               = get (Param::auraBigSafe) > 0.5f;
+    ab.inputBypass        = get (Param::auraBigInputBypass) > 0.5f;
+    ab.toneBypass         = get (Param::auraBigToneBypass) > 0.5f;
+    ab.tubeBypass         = get (Param::auraBigTubeBypass) > 0.5f;
+    ab.transistorBypass   = get (Param::auraBigTransistorBypass) > 0.5f;
+    ab.transformerBypass  = get (Param::auraBigTransformerBypass) > 0.5f;
+    ab.densityBypass      = get (Param::auraBigDensityBypass) > 0.5f;
+    ab.airBypass          = get (Param::auraBigAirBypass) > 0.5f;
+    ab.widthBypass        = get (Param::auraBigWidthBypass) > 0.5f;
+    ab.limiterBypass      = get (Param::auraBigLimiterBypass) > 0.5f;
 
     return p;
 }
@@ -417,6 +727,36 @@ void StadiumAuraAudioProcessor::setStateInformation (const void* data, int sizeI
 {
     if (auto xml = getXmlFromBinary (data, sizeInBytes); xml != nullptr && xml->hasTagName (apvts.state.getType()))
         apvts.replaceState (juce::ValueTree::fromXml (*xml));
+}
+
+float StadiumAuraAudioProcessor::getEQMagnitudeDb (float freqHz) const
+{
+    static const float slopeTable[] = { 6.f,12.f,18.f,24.f,36.f,48.f,72.f,96.f };
+    std::array<EQBandState, 24> states {};
+
+    for (int b = 0; b < 24; ++b)
+    {
+        const auto pfx = "EQ_BAND_" + juce::String (b + 1).paddedLeft ('0', 2) + "_";
+        auto get = [this] (const juce::String& id) -> float
+        {
+            if (auto* p = apvts.getRawParameterValue (id)) return p->load();
+            return 0.0f;
+        };
+        auto& s = states[static_cast<size_t> (b)];
+        s.enabled       = get (pfx + "ENABLED") > 0.5f;
+        s.type          = static_cast<EQBandType> (juce::jlimit (0, 6, (int) get (pfx + "TYPE")));
+        s.frequencyHz   = get (pfx + "FREQ");
+        s.gainDb        = get (pfx + "GAIN");
+        s.q             = get (pfx + "Q");
+        const int si    = juce::jlimit (0, 7, (int) get (pfx + "SLOPE"));
+        s.slopeDbPerOct = slopeTable[si];
+    }
+
+    const double sr = getSampleRate() > 0 ? getSampleRate() : 44100.0;
+    float total = 0.0f;
+    for (const auto& s : states)
+        total += EQCurveRenderer::bandResponseDb (s, freqHz, sr);
+    return total;
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()

@@ -52,6 +52,7 @@ target_sources(StadiumAura PRIVATE
     Source/dsp/EQBand.cpp
     Source/dsp/EQProcessor.cpp
     Source/dsp/MicCharacterProcessor.cpp
+    Source/dsp/AuraMicCharacterEngine.cpp
     Source/dsp/CompressorSection.cpp
     Source/dsp/SafetyLimiter.cpp
     Source/ui/EQPanel.cpp
@@ -84,6 +85,7 @@ if (BUILD_TESTING)
         Source/dsp/EQBand.cpp
         Source/dsp/EQProcessor.cpp
         Source/dsp/MicCharacterProcessor.cpp
+        Source/dsp/AuraMicCharacterEngine.cpp
         Source/dsp/CompressorSection.cpp
         Source/dsp/SafetyLimiter.cpp)
     target_include_directories(StadiumAuraTests PRIVATE Source)
