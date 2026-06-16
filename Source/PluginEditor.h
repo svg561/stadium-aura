@@ -8,6 +8,7 @@
 #include "ui/RackComponents.h"
 #include "ui/RackMeter.h"
 #include "ui/EQPanel.h"
+#include "ui/ExpandedEQPanel.h"
 
 class StadiumAuraAudioProcessorEditor final : public juce::AudioProcessorEditor, private juce::Timer
 {
@@ -80,9 +81,8 @@ private:
     PremiumKnob targetAmount { "TGT", 50.0, " %" };
     PremiumKnob badFreq { "BAD", 35.0, " %" };
     PremiumKnob preampDrive { "DRV", 25.0, " %" };
-    PremiumKnob aura { "AURA", 50.0, " %" };
-    PremiumKnob compAmount { "COMP", 0.0, " %" };
-    PremiumKnob compMakeup { "MK", 0.0, " dB" };
+    PremiumKnob aura { "AURA", 0.0, " %" };
+    PremiumKnob compAmount { "AMT", 0.0, " %" };
     PremiumKnob attack { "ATK", 20.0, " ms" };
     PremiumKnob release { "REL", 400.0, " ms" };
     PremiumKnob threshold { "THR", -18.0, " dB" };
@@ -142,6 +142,22 @@ private:
     juce::ToggleButton auraLevelBtn { "AURA LEVEL" };
     juce::Label        auraLevelStateLabel;
 
+    // Horizontal vintage VU meters (meter strip)
+    AuraHorizontalVUMeter inputVuMeter      { AuraHorizontalVUMeter::MeterMode::Input };
+    AuraHorizontalVUMeter grHorizontalMeter { AuraHorizontalVUMeter::MeterMode::GainReduction };
+    AuraHorizontalVUMeter outputVuMeter     { AuraHorizontalVUMeter::MeterMode::Output };
+
+    // Aura big label (above aura knob in hero panel)
+    juce::Label auraBigLabel;
+    AuraBigHeatRing auraHeatRing;
+    std::array<AuraBigStageLed, 9> auraBigStageLeds {{
+        AuraBigStageLed { "IN" }, AuraBigStageLed { "TONE" }, AuraBigStageLed { "TUBE" },
+        AuraBigStageLed { "EDGE" }, AuraBigStageLed { "IRON" }, AuraBigStageLed { "DENS" },
+        AuraBigStageLed { "AIR" }, AuraBigStageLed { "WID" }, AuraBigStageLed { "LIM" }
+    }};
+
+    std::unique_ptr<ExpandedEQPanel> expandedEQPanel;
+
     std::vector<std::unique_ptr<SliderAttachment>> sliderAttachments;
     std::vector<std::unique_ptr<ButtonAttachment>> buttonAttachments;
     std::vector<std::unique_ptr<ComboAttachment>> comboAttachments;
@@ -150,7 +166,8 @@ private:
     int activeAbSlot = 0;
     // Re-assert standalone unmute for the first ~2 s so the saved device state
     // cannot silently re-mute the input after the editor is constructed.
-    int startupUnmuteCountdown { 120 };
+    int startupUnmuteCountdown { 180 };  // 3 s at 60 Hz
+    bool startupAutoInputTriggered { false };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (StadiumAuraAudioProcessorEditor)
 };
