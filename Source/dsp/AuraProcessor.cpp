@@ -11,6 +11,7 @@ void AuraProcessor::prepare (double sampleRate, int maximumBlockSize, int channe
     currentSampleRate = sampleRate;
     dryBuffer.setSize (channels, juce::jmax (maximumBlockSize, 65536), false, true, false);
     eqProcessor.prepare (sampleRate, maximumBlockSize);
+    auraBigEngine.prepare (sampleRate, maximumBlockSize, channels);
     transformer.prepare (sampleRate, channels);
     transformerHigh.prepare (sampleRate * 2.0, channels);
     micCharacter.prepare (sampleRate, channels);
@@ -18,6 +19,7 @@ void AuraProcessor::prepare (double sampleRate, int maximumBlockSize, int channe
     widthProcessor.prepare (sampleRate);
     compressor.prepare (sampleRate);
     busCompressor.prepare (sampleRate);
+    compressorEngine.prepare (sampleRate, maximumBlockSize, channels);
     limiter.prepare (sampleRate, maximumBlockSize, channels);
     bypassDelayBuffer.setSize (channels, limiter.getLatencySamples() + 1, false, true, false);
     initialiseSmoothers (sampleRate);
@@ -29,6 +31,7 @@ void AuraProcessor::reset() noexcept
     dryBuffer.clear();
     bypassDelayBuffer.clear();
     eqProcessor.reset();
+    auraBigEngine.reset();
     transformer.reset();
     transformerHigh.reset();
     micCharacter.reset();
@@ -36,6 +39,7 @@ void AuraProcessor::reset() noexcept
     widthProcessor.reset();
     compressor.reset();
     busCompressor.reset();
+    compressorEngine.reset();
     limiter.reset();
     bypassDelayPosition = 0;
     previousColourInput = { 0.0f, 0.0f };
@@ -249,6 +253,10 @@ void AuraProcessor::process (juce::AudioBuffer<float>& buffer, const AuraParamet
     masterEnable.setTargetValue (p.masterSectionEnabled ? 1.0f : 0.0f);
 
     float blockTubePeak = 0.0f;
+    // When AURA BIG is active (amount > 0.001 && !globalBypass), skip legacy aura macro
+    // contributions so tubeDrive/saturation/transformer/glue are not doubled. At default
+    // amount=0 the legacy aura knob behaves exactly as before.
+    const bool auraBigActive = p.auraBigParams.amount > 0.001f && ! p.auraBigParams.globalBypass;
 
     for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
     {
@@ -257,7 +265,8 @@ void AuraProcessor::process (juce::AudioBuffer<float>& buffer, const AuraParamet
         const auto wetMix = mix.getNextValue();
         const auto masterBlend = masterEnable.getNextValue();
         const auto auraValue = aura.getNextValue() * masterBlend;
-        const auto macro = calculateMacro (auraValue);
+        const auto macro = auraBigActive ? MacroValues { 0.f, 0.f, 0.f, 0.f, 0.f, 1.f, 0.f }
+                                         : calculateMacro (auraValue);
         const auto micBlend = micEnable.getNextValue();
         const auto preampBlend = preampEnable.getNextValue();
         const auto harmonicsBlend = harmonicsEnable.getNextValue();
@@ -367,7 +376,8 @@ void AuraProcessor::process (juce::AudioBuffer<float>& buffer, const AuraParamet
             attackValue = juce::jmap (fixedBlend, attackValue, fixedAttack);
             releaseValue = juce::jmap (fixedBlend, releaseValue, fixedRelease);
         }
-        const auto compressorGain = p.compressorEnabled
+        // When the new engine is enabled, bypass the legacy per-sample compressor
+        const auto compressorGain = (p.compressorEnabled && !p.compressorParams.enabled)
             ? compressor.processDetectorDetailed (detector, p.compressorMode, thresholdValue,
                                                   ratioValue, attackValue, releaseValue, sidechainHpfValue)
             : 1.0f;
@@ -416,8 +426,19 @@ void AuraProcessor::process (juce::AudioBuffer<float>& buffer, const AuraParamet
             buffer.setSample (1, sample, juce::jmap (wetMix, dryRight, wetRight));
     }
 
+    // AURA BIG colour engine — block processor after per-sample chain, before new compressor
+    auraBigEngine.process (buffer, p.auraBigParams);
+
+    // Stadium Aura compressor — runs after analog colour, before digital EQ
+    if (p.compressorParams.enabled)
+    {
+        compressorEngine.updateParameters (p.compressorParams);
+        compressorEngine.processBlock (buffer);
+    }
+
     // 24-band EQ — applied after the legacy EQ, before the limiter
-    eqProcessor.process (buffer, p.eqBands);
+    if (! p.eqGlobalBypass)
+        eqProcessor.process (buffer, p.eqBands);
 
     limiter.process (buffer, ceiling, p.limiterEnabled);
 

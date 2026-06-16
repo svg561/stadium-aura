@@ -50,9 +50,17 @@ public:
     std::atomic<float> gainReductionMeter { 0.0f };
     std::atomic<float> limiterReductionMeter { 0.0f };
     std::atomic<float> tubeActivityMeter { 0.0f };
+    std::atomic<float> newCompGainReduction { 0.0f };
+    std::atomic<float> newCompTargetGr { 0.0f };
+    std::atomic<int> auraBigSweetSpotState { 0 };
+    std::atomic<float> auraBigInputRmsDb { -60.f };
+    std::atomic<float> auraBigInputPeakDb { -60.f };
 
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     AnalyzerSnapshot getAnalyzerSnapshot() const noexcept;
+
+    // Returns the summed EQ magnitude in dB at a given frequency, based on current band states.
+    float getEQMagnitudeDb (float freqHz) const;
 
 private:
     struct FactoryPreset
