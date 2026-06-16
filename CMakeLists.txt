@@ -48,6 +48,7 @@ juce_generate_juce_header(StadiumAura)
 target_sources(StadiumAura PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
+    Source/StadiumAuraFactoryPresets.cpp
     Source/dsp/AuraProcessor.cpp
     Source/dsp/EQBand.cpp
     Source/dsp/EQProcessor.cpp
