@@ -2,6 +2,7 @@
 #include "PluginEditor.h"
 #include "dsp/EQBand.h"
 #include "dsp/AuraCompressorEngine.h"
+#include "dsp/AuraMicCharacterEngine.h"
 #include "ui/EQPanel.h"
 
 // Set to true to bypass all DSP and pass mic input directly to output.
@@ -66,6 +67,19 @@ constexpr auto auraBigAirBypass = "AURA_BIG_AIR_BYPASS";
 constexpr auto auraBigWidthBypass = "AURA_BIG_WIDTH_BYPASS";
 constexpr auto auraBigLimiterBypass = "AURA_BIG_LIMITER_BYPASS";
 constexpr auto eqGlobalBypass = "EQ_GLOBAL_BYPASS";
+constexpr auto micCharEnabled = "MIC_CHAR_ENABLED";
+constexpr auto micCharBypass = "MIC_CHAR_BYPASS";
+constexpr auto micCharProfile = "MIC_CHAR_PROFILE";
+constexpr auto micCharInputTrim = "MIC_CHAR_INPUT_TRIM";
+constexpr auto micCharProximity = "MIC_CHAR_PROXIMITY";
+constexpr auto micCharBody = "MIC_CHAR_BODY";
+constexpr auto micCharPresence = "MIC_CHAR_PRESENCE";
+constexpr auto micCharAir = "MIC_CHAR_AIR";
+constexpr auto micCharDeHarsh = "MIC_CHAR_DEHARSH";
+constexpr auto micCharSibilance = "MIC_CHAR_SIBILANCE";
+constexpr auto micCharColor = "MIC_CHAR_COLOR";
+constexpr auto micCharOutputTrim = "MIC_CHAR_OUTPUT_TRIM";
+constexpr auto micCharSimpleMode = "MIC_CHAR_SIMPLE_MODE";
 }
 
 StadiumAuraAudioProcessor::StadiumAuraAudioProcessor()
@@ -144,6 +158,23 @@ juce::AudioProcessorValueTreeState::ParameterLayout StadiumAuraAudioProcessor::c
     layout.add (std::make_unique<Choice> (Param::compTimingMode, "Compressor Timing", juce::StringArray { "Manual", "Fixed", "Fixed / Manual" }, 0));
     layout.add (std::make_unique<Choice> (Param::vuMeterMode, "VU Meter Mode", juce::StringArray { "Input", "Gain Reduction", "Output" }, 1));
     layout.add (std::make_unique<Bool> (Param::micSectionEnable, "Mic Section Enable", true));
+
+    layout.add (std::make_unique<Bool> (Param::micCharEnabled, "Mic Character Enable", true));
+    layout.add (std::make_unique<Bool> (Param::micCharBypass, "Mic Character Bypass", false));
+    layout.add (std::make_unique<Choice> (Param::micCharProfile, "Mic Character Profile", juce::StringArray {
+        "Aura Vintage 87", "Aura Silk Tube", "Aura Golden 251", "Aura Crystal 12", "Aura Broadcast 7",
+        "Aura Modern Pop", "Aura Warm Rap", "Aura Female Air", "Aura Male Body", "Aura Clean Capture" }, 0));
+    layout.add (std::make_unique<Float> (Param::micCharInputTrim, "Mic Input Trim", juce::NormalisableRange<float> (-12.0f, 12.0f, 0.01f), 0.0f, "dB", juce::AudioProcessorParameter::genericParameter, db));
+    layout.add (std::make_unique<Float> (Param::micCharProximity, "Mic Proximity", juce::NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f));
+    layout.add (std::make_unique<Float> (Param::micCharBody, "Mic Body", juce::NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f));
+    layout.add (std::make_unique<Float> (Param::micCharPresence, "Mic Presence", juce::NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f));
+    layout.add (std::make_unique<Float> (Param::micCharAir, "Mic Air", juce::NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f));
+    layout.add (std::make_unique<Float> (Param::micCharDeHarsh, "Mic De-Harsh", juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.25f));
+    layout.add (std::make_unique<Float> (Param::micCharSibilance, "Mic Sibilance Guard", juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.20f));
+    layout.add (std::make_unique<Float> (Param::micCharColor, "Mic Color", juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.12f));
+    layout.add (std::make_unique<Float> (Param::micCharOutputTrim, "Mic Output Trim", juce::NormalisableRange<float> (-12.0f, 12.0f, 0.01f), 0.0f, "dB", juce::AudioProcessorParameter::genericParameter, db));
+    layout.add (std::make_unique<Bool> (Param::micCharSimpleMode, "Mic Simple Mode", true));
+
     layout.add (std::make_unique<Bool> (Param::preampSectionEnable, "Preamp Section Enable", true));
     layout.add (std::make_unique<Bool> (Param::harmonicsSectionEnable, "Harmonics Section Enable", true));
     layout.add (std::make_unique<Bool> (Param::sumSectionEnable, "Sum Section Enable", true));
@@ -439,6 +470,30 @@ AuraParameters StadiumAuraAudioProcessor::readParameters() const noexcept
     p.bypassed = get (Param::bypass) > 0.5f; p.dimmed = get (Param::dim) > 0.5f;
     p.quality = static_cast<int> (get (Param::quality));
     p.micSectionEnabled = get (Param::micSectionEnable) > 0.5f;
+
+    const auto profileIndex = juce::jlimit (0, kNumAuraMicProfiles - 1, static_cast<int> (get (Param::micCharProfile)));
+    const auto& micProfile = AuraMicCharacterEngine::auraMicProfiles[profileIndex];
+    const auto bodyMacro = get (Param::micCharBody);
+    const auto presenceMacro = get (Param::micCharPresence);
+    const auto airMacro = get (Param::micCharAir);
+    const auto proximityMacro = get (Param::micCharProximity);
+    p.micCharacterParams.enabled = get (Param::micCharEnabled) > 0.5f;
+    p.micCharacterParams.bypass = get (Param::micCharBypass) > 0.5f;
+    p.micCharacterParams.profileIndex = profileIndex;
+    p.micCharacterParams.inputTrimDb = micProfile.inputTrimDb + get (Param::micCharInputTrim);
+    p.micCharacterParams.proximity = proximityMacro;
+    p.micCharacterParams.bodyDb = micProfile.bodyDb + bodyMacro * 2.5f;
+    p.micCharacterParams.mudDb = micProfile.mudDb + bodyMacro * -0.4f;
+    p.micCharacterParams.presenceDb = micProfile.presenceDb + presenceMacro * 2.5f;
+    p.micCharacterParams.airDb = micProfile.airDb + airMacro * 2.5f;
+    p.micCharacterParams.deHarsh = get (Param::micCharDeHarsh);
+    p.micCharacterParams.sibilanceGuard = get (Param::micCharSibilance);
+    p.micCharacterParams.colorAmount = get (Param::micCharColor);
+    p.micCharacterParams.outputTrimDb = micProfile.outputTrimDb + get (Param::micCharOutputTrim);
+    p.micCharacterParams.lowCutHz = juce::jlimit (35.0f, 180.0f,
+        micProfile.lowCutHz - proximityMacro * 25.0f + micProfile.proximityDb * 8.0f);
+    p.micCharacterParams.simpleMode = get (Param::micCharSimpleMode) > 0.5f;
+
     p.preampSectionEnabled = get (Param::preampSectionEnable) > 0.5f;
     p.harmonicsSectionEnabled = get (Param::harmonicsSectionEnable) > 0.5f;
     p.sumSectionEnabled = get (Param::sumSectionEnable) > 0.5f;

@@ -38,6 +38,7 @@ private:
     void captureAbState (int slot);
     void restoreAbState (int slot);
     void refreshCompressorProfileBar();
+    void updateMicCharacterControlVisibility();
     void updateCompressorControlVisibility();
     void layoutKnobRow (juce::Rectangle<int>& area, std::initializer_list<juce::Slider*> knobs);
     void layoutKnobGrid (juce::Rectangle<int>& area, int columns, std::initializer_list<juce::Slider*> knobs);
@@ -46,7 +47,7 @@ private:
     PremiumLookAndFeel lookAndFeel;
     juce::TooltipWindow tooltipWindow { this, 350 };
 
-    RackModulePanel leftPanel { "INPUT / TONE" };
+    RackModulePanel leftPanel { "MIC CHARACTER" };
     RackModulePanel heroPanel { "AURA" };
     RackModulePanel rightPanel { "DYNAMICS / OUTPUT" };
     RackModulePanel eqPanel { "EQ / TONE" };
@@ -68,9 +69,15 @@ private:
     PremiumKnob outputKnob { "OUTPUT", 0.0, " dB" };
     PremiumFader inputFader { "INPUT LEVEL", 0.0, " dB" };
     PremiumFader outputFader { "OUTPUT LEVEL", 0.0, " dB" };
-    PremiumKnob bodyKnob { "BODY", 50.0, " %" };
-    PremiumKnob presenceKnob { "PRES", 0.0, " %" };
-    PremiumKnob airKnob { "AIR", 50.0, " %" };
+    PremiumKnob bodyKnob { "BODY", 0.0, "" };
+    PremiumKnob presenceKnob { "PRES", 0.0, "" };
+    PremiumKnob airKnob { "AIR", 0.0, "" };
+    PremiumKnob micCharColorKnob { "COLOR", 12.0, "" };
+    PremiumKnob micCharOutputKnob { "OUT", 0.0, " dB" };
+    PremiumKnob micCharInputTrimKnob { "IN TRIM", 0.0, " dB" };
+    PremiumKnob micCharProximityKnob { "PROX", 0.0, "" };
+    PremiumKnob micCharDeHarshKnob { "DE-HARSH", 25.0, "" };
+    PremiumKnob micCharSibilanceKnob { "SIB", 20.0, "" };
     PremiumKnob tubeDriveKnob { "TUBE", 25.0, " %" };
     PremiumKnob saturation { "SAT", 20.0, " %" };
     PremiumKnob tubeBias { "BIAS", 0.0, " %" };
@@ -92,7 +99,9 @@ private:
     PremiumKnob width { "WID", 100.0, " %" };
     PremiumKnob ceiling { "CEIL", -1.0, " dB" };
 
-    juce::ComboBox sourceMic, targetMic, preampMode, tubeType, vuMode, consoleMode, presets;
+    juce::ComboBox sourceMic, targetMic, micCharProfile, preampMode, tubeType, vuMode, consoleMode, presets;
+    juce::ToggleButton micCharBypass { "BYPASS" };
+    juce::ToggleButton micCharSimpleMode { "SIMPLE" };
     juce::ToggleButton hardwareSafe { "SAFE" };
     juce::ToggleButton compressorEnable { "COMP ON" };
     juce::ToggleButton limiter { "LIMITER" };

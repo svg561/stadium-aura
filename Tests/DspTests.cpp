@@ -1,5 +1,6 @@
 #include <JuceHeader.h>
 #include "dsp/AuraProcessor.h"
+#include "dsp/AuraMicCharacterEngine.h"
 
 namespace
 {
@@ -80,28 +81,27 @@ int main()
     parameters.sumSectionEnabled = true;
     parameters.masterSectionEnabled = true;
 
-    for (int micMode = 0; micMode < 7; ++micMode)
+    AuraMicCharacterEngine micEngine;
+    for (int profile = 0; profile < kNumAuraMicProfiles; ++profile)
     {
-        parameters.micCharacter = static_cast<MicCharacterProcessor::Mode> (micMode);
+        micEngine.applyProfileDefaults (parameters.micCharacterParams, profile);
+        parameters.micCharacterParams.enabled = true;
+        parameters.micCharacterParams.bypass = false;
         for (int preampMode = 0; preampMode < 3; ++preampMode)
         {
             parameters.preampMode = static_cast<PreampArchitecture::Mode> (preampMode);
             parameters.tubeSwap = preampMode;
             fillSine (stereo, 0.75f);
             processor.process (stereo, parameters);
-            if (! allFinite (stereo)) return 6 + micMode * 3 + preampMode;
+            if (! allFinite (stereo)) return 6 + profile * 3 + preampMode;
         }
     }
 
-    for (int sourceMode = 0; sourceMode < 11; ++sourceMode)
-    {
-        parameters.sourceMicMode = static_cast<MicCharacterProcessor::SourceMode> (sourceMode);
-        parameters.targetMicMode = static_cast<MicCharacterProcessor::Mode> (sourceMode % 7);
-        parameters.hardwareSafeMode = (sourceMode % 2) == 0;
-        fillSine (stereo, 0.65f);
-        processor.process (stereo, parameters);
-        if (! allFinite (stereo)) return 40 + sourceMode;
-    }
+    parameters.micCharacterParams.bypass = true;
+    fillSine (stereo, 0.5f);
+    processor.process (stereo, parameters);
+    if (! allFinite (stereo)) return 90;
+    parameters.micCharacterParams.bypass = false;
 
     for (int tubeType = 0; tubeType < 6; ++tubeType)
         for (int consoleMode = 0; consoleMode < 4; ++consoleMode)

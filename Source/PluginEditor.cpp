@@ -58,7 +58,10 @@ StadiumAuraAudioProcessorEditor::StadiumAuraAudioProcessorEditor (StadiumAuraAud
     const std::pair<juce::Slider*, const char*> sliders[] {
         { &inputKnob, "input" }, { &outputKnob, "output" },
         { &inputFader, "input" }, { &outputFader, "output" },
-        { &bodyKnob, "bodyProtection" }, { &presenceKnob, "tone" }, { &airKnob, "airProtection" },
+        { &bodyKnob, "MIC_CHAR_BODY" }, { &presenceKnob, "MIC_CHAR_PRESENCE" }, { &airKnob, "MIC_CHAR_AIR" },
+        { &micCharColorKnob, "MIC_CHAR_COLOR" }, { &micCharOutputKnob, "MIC_CHAR_OUTPUT_TRIM" },
+        { &micCharInputTrimKnob, "MIC_CHAR_INPUT_TRIM" }, { &micCharProximityKnob, "MIC_CHAR_PROXIMITY" },
+        { &micCharDeHarshKnob, "MIC_CHAR_DEHARSH" }, { &micCharSibilanceKnob, "MIC_CHAR_SIBILANCE" },
         { &tubeDriveKnob, "tubeDrive" }, { &saturation, "saturation" }, { &tubeBias, "harmonicBias" },
         { &transformer, "transformer" }, { &summing, "summing" }, { &glue, "glue" },
         { &correction, "micCorrectionAmount" }, { &targetAmount, "micTargetAmount" }, { &badFreq, "badFrequencyTamer" },
@@ -84,6 +87,8 @@ StadiumAuraAudioProcessorEditor::StadiumAuraAudioProcessorEditor (StadiumAuraAud
     };
     sliderAttachments.push_back (std::make_unique<SliderAttachment> (processorRef.apvts, "AURA_BIG_AMOUNT", aura));
 
+    attachButton (micCharBypass, "MIC_CHAR_BYPASS");
+    attachButton (micCharSimpleMode, "MIC_CHAR_SIMPLE_MODE");
     attachButton (hardwareSafe, "hardwareSafeMode");
     attachButton (compressorEnable, "COMP_ENABLED");
     attachButton (compBypassBtn, "COMP_BYPASS");
@@ -94,6 +99,9 @@ StadiumAuraAudioProcessorEditor::StadiumAuraAudioProcessorEditor (StadiumAuraAud
     attachButton (emotionLockBtn, "EMOTION_LOCK_ENABLED");
     attachButton (auraLevelBtn,   "COMP_AURA_LEVEL");
 
+    attachCombo (micCharProfile, "MIC_CHAR_PROFILE", {
+        "Aura Vintage 87", "Aura Silk Tube", "Aura Golden 251", "Aura Crystal 12", "Aura Broadcast 7",
+        "Aura Modern Pop", "Aura Warm Rap", "Aura Female Air", "Aura Male Body", "Aura Clean Capture" });
     attachCombo (sourceMic, "sourceMicMode", { "Unknown / Auto", "Dynamic General", "Condenser General",
         "Ribbon General", "57-Style Dynamic", "7B-Style Dynamic", "C80-Style Condenser", "Bright Condenser",
         "Dark Condenser", "Warm Tube Mic", "Flat / Measurement" });
@@ -116,6 +124,14 @@ StadiumAuraAudioProcessorEditor::StadiumAuraAudioProcessorEditor (StadiumAuraAud
                      static_cast<juce::Component*> (&compGrMeter) })
         addAndMakeVisible (*c);
 
+    addAndMakeVisible (micCharBypass);
+    addAndMakeVisible (micCharSimpleMode);
+    micCharSimpleMode.onClick = [this]
+    {
+        updateMicCharacterControlVisibility();
+        resized();
+    };
+    updateMicCharacterControlVisibility();
     addAndMakeVisible (compBypassBtn);
     addAndMakeVisible (compTimingMode);
     addAndMakeVisible (compScHpfMode);
@@ -296,6 +312,20 @@ void StadiumAuraAudioProcessorEditor::refreshCompressorProfileBar()
     compProfileBar.setSelectedIndex (profileIndex, juce::dontSendNotification);
 }
 
+void StadiumAuraAudioProcessorEditor::updateMicCharacterControlVisibility()
+{
+    const bool simple = processorRef.apvts.getRawParameterValue ("MIC_CHAR_SIMPLE_MODE")->load() > 0.5f;
+    micCharInputTrimKnob.setVisible (! simple);
+    micCharProximityKnob.setVisible (! simple);
+    micCharDeHarshKnob.setVisible (! simple);
+    micCharSibilanceKnob.setVisible (! simple);
+    sourceMic.setVisible (false);
+    targetMic.setVisible (false);
+    correction.setVisible (false);
+    targetAmount.setVisible (false);
+    badFreq.setVisible (false);
+}
+
 void StadiumAuraAudioProcessorEditor::updateCompressorControlVisibility()
 {
     const auto modelIndex = juce::jlimit (0, 5, static_cast<int> (processorRef.apvts.getRawParameterValue ("COMP_MODEL")->load()));
@@ -451,13 +481,22 @@ void StadiumAuraAudioProcessorEditor::applyRouteVisuals()
     setPanel (rightPanel, route == 2 || route == 6, route != 2 && route != 6);
     setPanel (eqPanel, route == 5, route != 5);
 
-    sourceMic.setVisible (route == 0);
-    targetMic.setVisible (false);  // TODO: expose on a dedicated mic-character page
-    correction.setVisible (route == 0);
-    targetAmount.setVisible (route == 0);
-    badFreq.setVisible (route == 0);
+    sourceMic.setVisible (false);
+    targetMic.setVisible (false);
+    correction.setVisible (false);
+    targetAmount.setVisible (false);
+    badFreq.setVisible (false);
     hardwareSafe.setVisible (route == 0);
     analyzeSource.setVisible (route == 0);
+    micCharProfile.setVisible (route == 0);
+    micCharBypass.setVisible (route == 0);
+    micCharSimpleMode.setVisible (route == 0);
+    bodyKnob.setVisible (route == 0);
+    presenceKnob.setVisible (route == 0);
+    airKnob.setVisible (route == 0);
+    micCharColorKnob.setVisible (route == 0);
+    micCharOutputKnob.setVisible (route == 0);
+    updateMicCharacterControlVisibility();
     preampMode.setVisible (route == 0 || route == 1);
     preampDrive.setVisible (route == 0 || route == 1);
     threshold.setVisible (route == 2);
@@ -556,26 +595,35 @@ void StadiumAuraAudioProcessorEditor::resized()
     {
         auto la = left.reduced (kPanelPadding, kPanelTop);
 
-        // Three dropdowns — Mic Model, Preamp Model, Console Model
-        // targetMic is always hidden (see applyRouteVisuals); no slot reserved here
-        sourceMic.setBounds   (la.removeFromTop (kDropdownH));
+        // Mic Character profile + bypass, then preamp / console selectors
+        micCharProfile.setBounds (la.removeFromTop (kDropdownH));
+        la.removeFromTop (kGap);
+        auto bypassRow = la.removeFromTop (kBtnH);
+        micCharBypass.setBounds (bypassRow.removeFromLeft (bypassRow.getWidth() / 2).reduced (2));
+        micCharSimpleMode.setBounds (bypassRow.reduced (2));
         la.removeFromTop (kGap);
         preampMode.setBounds  (la.removeFromTop (kDropdownH));
         la.removeFromTop (kGap);
         consoleMode.setBounds (la.removeFromTop (kDropdownH));
         la.removeFromTop (kGap * 2);
-        targetMic.setBounds   ({});   // hidden — targetMic has no layout slot
+        targetMic.setBounds   ({});
 
-        // 2-column × 4-row knob grid; cell height derived from remaining space
-        // PremiumKnob needs: nameLabel(14) + rotary + textBox(16) = cell height
-        // kBtnH*2 + kGap*3 reserved for Analyze + Safe Mode buttons below
+        const bool simpleMic = processorRef.apvts.getRawParameterValue ("MIC_CHAR_SIMPLE_MODE")->load() > 0.5f;
+        const int micKnobRows = simpleMic ? 3 : 4;
         const int buttonsH = kBtnH + kGap + kBtnH + kGap * 2;
-        const int kH       = juce::jmax (56, juce::jmin (92, (la.getHeight() - buttonsH) / 4));
-        auto gridArea      = la.removeFromTop (kH * 4);
-        layoutKnobGrid (gridArea, 2, { &correction,  &targetAmount,
-                                       &bodyKnob,    &airKnob,
-                                       &presenceKnob,&inputKnob,
-                                       &preampDrive, &badFreq });
+        const int kH = juce::jmax (56, juce::jmin (88, (la.getHeight() - buttonsH) / micKnobRows));
+        auto gridArea = la.removeFromTop (kH * micKnobRows);
+        if (simpleMic)
+            layoutKnobGrid (gridArea, 2, { &bodyKnob, &presenceKnob, &airKnob, &micCharColorKnob, &micCharOutputKnob });
+        else
+            layoutKnobGrid (gridArea, 2, { &bodyKnob, &presenceKnob, &airKnob, &micCharColorKnob,
+                                           &micCharOutputKnob, &micCharInputTrimKnob, &micCharProximityKnob,
+                                           &micCharDeHarshKnob, &micCharSibilanceKnob });
+
+        la.removeFromTop (kGap);
+        auto preampRow = la.removeFromTop (juce::jmin (kH, 72));
+        preampDrive.setBounds (preampRow.withSizeKeepingCentre (juce::jmin (preampRow.getWidth(), 76),
+                                                                juce::jmin (preampRow.getHeight(), 76)));
 
         la.removeFromTop (kGap * 2);
         analyzeSource.setBounds (la.removeFromTop (kBtnH).reduced (2));

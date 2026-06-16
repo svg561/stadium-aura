@@ -5,6 +5,7 @@
 #include "AuraCompressorEngine.h"
 #include "CompressorSection.h"
 #include "EQProcessor.h"
+#include "AuraMicCharacterEngine.h"
 #include "MicCharacterProcessor.h"
 #include "PreampArchitecture.h"
 #include "SafetyLimiter.h"
@@ -46,6 +47,7 @@ struct AuraParameters
     float bodyProtection = 0.50f;
     bool hardwareSafeMode = true;
     MicCharacterProcessor::Mode micCharacter = MicCharacterProcessor::Mode::u87;
+    MicCharacterParams micCharacterParams;
     PreampArchitecture::Mode preampMode = PreampArchitecture::Mode::vintage73;
     float preampDrive = 0.25f;
     int tubeSwap = 0;
@@ -144,6 +146,8 @@ private:
     CompressorSection busCompressor;
     SafetyLimiter limiter;
     MicCharacterProcessor micCharacter;
+    AuraMicCharacterEngine micCharacterEngine;
+    juce::AudioBuffer<float> micDryBuffer;
     PreampArchitecture preamp;
 
     juce::SmoothedValue<float> inputGain, outputGain, mix, aura, tubeDrive, saturation;

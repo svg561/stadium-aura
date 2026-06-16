@@ -15,6 +15,8 @@ void AuraProcessor::prepare (double sampleRate, int maximumBlockSize, int channe
     transformer.prepare (sampleRate, channels);
     transformerHigh.prepare (sampleRate * 2.0, channels);
     micCharacter.prepare (sampleRate, channels);
+    micCharacterEngine.prepare (sampleRate, maximumBlockSize, channels);
+    micDryBuffer.setSize (channels, juce::jmax (maximumBlockSize, 1), false, true, false);
     preamp.prepare (sampleRate, channels);
     widthProcessor.prepare (sampleRate);
     compressor.prepare (sampleRate);
@@ -35,6 +37,8 @@ void AuraProcessor::reset() noexcept
     transformer.reset();
     transformerHigh.reset();
     micCharacter.reset();
+    micCharacterEngine.reset();
+    micDryBuffer.clear();
     preamp.reset();
     widthProcessor.reset();
     compressor.reset();
@@ -217,8 +221,7 @@ void AuraProcessor::process (juce::AudioBuffer<float>& buffer, const AuraParamet
 {
     jassert (buffer.getNumSamples() <= dryBuffer.getNumSamples());
     const auto channels = juce::jmin (buffer.getNumChannels(), dryBuffer.getNumChannels());
-    for (int channel = 0; channel < channels; ++channel)
-        dryBuffer.copyFrom (channel, 0, buffer, channel, 0, buffer.getNumSamples());
+    const auto numSamples = buffer.getNumSamples();
 
     inputGain.setTargetValue (juce::Decibels::decibelsToGain (p.inputGainDb));
     outputGain.setTargetValue (juce::Decibels::decibelsToGain (p.outputGainDb));
@@ -252,14 +255,37 @@ void AuraProcessor::process (juce::AudioBuffer<float>& buffer, const AuraParamet
     sumEnable.setTargetValue (p.sumSectionEnabled ? 1.0f : 0.0f);
     masterEnable.setTargetValue (p.masterSectionEnabled ? 1.0f : 0.0f);
 
-    float blockTubePeak = 0.0f;
+    for (int channel = 0; channel < channels; ++channel)
+        dryBuffer.copyFrom (channel, 0, buffer, channel, 0, numSamples);
+
+    // Input trim + headroom pad, then official Mic Character (before preamp / legacy matching).
+    for (int sample = 0; sample < numSamples; ++sample)
+    {
+        const auto inGain = inputGain.getNextValue();
+        for (int channel = 0; channel < channels; ++channel)
+            buffer.setSample (channel, sample, buffer.getSample (channel, sample) * inGain * headroomPad);
+    }
+    inputGain.skip (numSamples - 1);
+
+    for (int channel = 0; channel < channels; ++channel)
+        micDryBuffer.copyFrom (channel, 0, buffer, channel, 0, numSamples);
+
+    const bool micCharActive = p.micSectionEnabled
+                            && p.micCharacterParams.enabled
+                            && ! p.micCharacterParams.bypass;
+    if (micCharActive)
+    {
+        micCharacterEngine.process (buffer, p.micCharacterParams);
+    }
+
     // Center hero knob drives AURA_BIG_AMOUNT; legacy "aura" APVTS param remains for presets/automation.
     // When AURA BIG is active, zero legacy macro so tube/saturation/transformer/glue are not doubled.
     const bool auraBigActive = p.auraBigParams.amount > 0.001f && ! p.auraBigParams.globalBypass;
 
-    for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
+    float blockTubePeak = 0.0f;
+
+    for (int sample = 0; sample < numSamples; ++sample)
     {
-        const auto inGain = inputGain.getNextValue();
         const auto outGain = outputGain.getNextValue();
         const auto wetMix = mix.getNextValue();
         const auto masterBlend = masterEnable.getNextValue();
@@ -278,11 +304,6 @@ void AuraProcessor::process (juce::AudioBuffer<float>& buffer, const AuraParamet
         const auto summingMix = summing.getNextValue() * sumBlend;
         const auto glueMix = juce::jlimit (0.0f, 1.0f, (glue.getNextValue() + macro.glue) * sumBlend);
         const auto compAmount = juce::jlimit (0.0f, 1.0f, compressorAmount.getNextValue() + macro.compression);
-        const auto correctionValue = micCorrection.getNextValue();
-        const auto targetValue = micTarget.getNextValue();
-        const auto badFrequencyValue = badFrequency.getNextValue();
-        const auto airProtectionValue = airProtect.getNextValue();
-        const auto bodyProtectionValue = bodyProtect.getNextValue();
         const auto preampDriveValue = preampDrive.getNextValue();
         const auto tubeOutputValue = tubeOutput.getNextValue();
         const auto consoleDensityValue = consoleDensity.getNextValue();
@@ -309,20 +330,10 @@ void AuraProcessor::process (juce::AudioBuffer<float>& buffer, const AuraParamet
         const auto monoBlend = monoAmount.getNextValue();
         const auto dim = dimGain.getNextValue();
 
-        float left = buffer.getSample (0, sample) * inGain * headroomPad;
-        float right = channels > 1 ? buffer.getSample (1, sample) * inGain * headroomPad : left;
-        const auto preMicLeft = left;
-        const auto preMicRight = right;
-        left = micCharacter.processRelativeSample (0, left, p.sourceMicMode, p.targetMicMode,
-                                                   correctionValue * micBlend, targetValue * micBlend,
-                                                   badFrequencyValue * micBlend,
-                                                   airProtectionValue, bodyProtectionValue, p.hardwareSafeMode);
-        right = micCharacter.processRelativeSample (juce::jmin (1, channels - 1), right,
-                                                    p.sourceMicMode, p.targetMicMode, correctionValue * micBlend,
-                                                    targetValue * micBlend, badFrequencyValue * micBlend,
-                                                    airProtectionValue, bodyProtectionValue, p.hardwareSafeMode);
-        left = micCharacter.processSample (0, left, p.micCharacter);
-        right = micCharacter.processSample (juce::jmin (1, channels - 1), right, p.micCharacter);
+        float left = buffer.getSample (0, sample);
+        float right = channels > 1 ? buffer.getSample (1, sample) : left;
+        const auto preMicLeft = micDryBuffer.getSample (0, sample);
+        const auto preMicRight = channels > 1 ? micDryBuffer.getSample (1, sample) : preMicLeft;
         left = juce::jmap (micBlend, preMicLeft, left);
         right = juce::jmap (micBlend, preMicRight, right);
 
