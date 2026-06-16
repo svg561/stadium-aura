@@ -47,13 +47,13 @@ private:
     PremiumLookAndFeel lookAndFeel;
     juce::TooltipWindow tooltipWindow { this, 350 };
 
-    RackModulePanel leftPanel { "MIC CHARACTER" };
-    RackModulePanel heroPanel { "AURA" };
-    RackModulePanel rightPanel { "DYNAMICS / OUTPUT" };
+    RackModulePanel leftPanel { "MIC / PRE / CONSOLE" };
+    RackModulePanel heroPanel { "AURA BIG" };
+    RackModulePanel rightPanel { "COMPRESSOR / OUTPUT" };
     RackModulePanel eqPanel { "EQ / TONE" };
 
     std::array<NavRouteButton, 7> routing {{ NavRouteButton { "MIC" }, NavRouteButton { "PRE" },
-        NavRouteButton { "COMP" }, NavRouteButton { "HARMONICS" }, NavRouteButton { "SUM" },
+        NavRouteButton { "COMP" }, NavRouteButton { "HARMONICS" }, NavRouteButton { "SUMMING" },
         NavRouteButton { "MASTER" }, NavRouteButton { "OUTPUT" } }};
 
     IconBarButton presetPrev { "<" }, presetNext { ">" };
@@ -63,46 +63,46 @@ private:
     DisabledFeatureButton saveBtn { "SAVE", "Preset saving is not implemented yet." };
     DisabledFeatureButton undoBtn { "UNDO", "Host undo integration is not implemented yet." };
     DisabledFeatureButton redoBtn { "REDO", "Host redo integration is not implemented yet." };
-    DisabledFeatureButton analyzeSource { "ANALYZE", "Learned source analysis is not implemented yet." };
+    DisabledFeatureButton analyzeSource { "ANALYZE SOURCE", "Learned source analysis is not implemented yet." };
 
     PremiumKnob inputKnob { "INPUT", 0.0, " dB" };
     PremiumKnob outputKnob { "OUTPUT", 0.0, " dB" };
     PremiumFader inputFader { "INPUT LEVEL", 0.0, " dB" };
     PremiumFader outputFader { "OUTPUT LEVEL", 0.0, " dB" };
     PremiumKnob bodyKnob { "BODY", 0.0, "" };
-    PremiumKnob presenceKnob { "PRES", 0.0, "" };
+    PremiumKnob presenceKnob { "PRESENCE", 0.0, "" };
     PremiumKnob airKnob { "AIR", 0.0, "" };
     PremiumKnob micCharColorKnob { "COLOR", 12.0, "" };
-    PremiumKnob micCharOutputKnob { "OUT", 0.0, " dB" };
+    PremiumKnob micCharOutputKnob { "OUTPUT", 0.0, " dB" };
     PremiumKnob micCharInputTrimKnob { "IN TRIM", 0.0, " dB" };
     PremiumKnob micCharProximityKnob { "PROX", 0.0, "" };
     PremiumKnob micCharDeHarshKnob { "DE-HARSH", 25.0, "" };
-    PremiumKnob micCharSibilanceKnob { "SIB", 20.0, "" };
+    PremiumKnob micCharSibilanceKnob { "SIBILANCE", 20.0, "" };
     PremiumKnob tubeDriveKnob { "TUBE", 25.0, " %" };
-    PremiumKnob saturation { "SAT", 20.0, " %" };
+    PremiumKnob saturation { "SATURATION", 20.0, " %" };
     PremiumKnob tubeBias { "BIAS", 0.0, " %" };
-    PremiumKnob transformer { "XFMR", 20.0, " %" };
-    PremiumKnob summing { "SUM", 20.0, " %" };
+    PremiumKnob transformer { "TRANSFORMER", 20.0, " %" };
+    PremiumKnob summing { "SUMMING", 20.0, " %" };
     PremiumKnob glue { "GLUE", 20.0, " %" };
-    PremiumKnob correction { "CORR", 35.0, " %" };
-    PremiumKnob targetAmount { "TGT", 50.0, " %" };
-    PremiumKnob badFreq { "BAD", 35.0, " %" };
-    PremiumKnob preampDrive { "DRV", 25.0, " %" };
-    PremiumKnob aura { "AURA", 0.0, " %" };
-    PremiumKnob compAmount { "AMT", 0.0, " %" };
-    PremiumKnob attack { "ATK", 20.0, " ms" };
-    PremiumKnob release { "REL", 400.0, " ms" };
-    PremiumKnob threshold { "THR", -18.0, " dB" };
-    PremiumKnob ratio { "RAT", 4.0, ":1" };
-    PremiumKnob bleed { "BLD", 0.0, " %" };
+    PremiumKnob correction { "CORRECTION", 35.0, " %" };
+    PremiumKnob targetAmount { "TARGET", 50.0, " %" };
+    PremiumKnob badFreq { "BAD FREQ", 35.0, " %" };
+    PremiumKnob preampDrive { "DRIVE", 25.0, " %" };
+    PremiumKnob aura { "AURA BIG", 0.0, " %" };
+    PremiumKnob compAmount { "AMOUNT", 0.0, " %" };
+    PremiumKnob attack { "ATTACK", 20.0, " ms" };
+    PremiumKnob release { "RELEASE", 400.0, " ms" };
+    PremiumKnob threshold { "THRESHOLD", -18.0, " dB" };
+    PremiumKnob ratio { "RATIO", 4.0, ":1" };
+    PremiumKnob bleed { "BLEED", 0.0, " %" };
     PremiumKnob mix { "MIX", 100.0, " %" };
-    PremiumKnob width { "WID", 100.0, " %" };
-    PremiumKnob ceiling { "CEIL", -1.0, " dB" };
+    PremiumKnob width { "WIDTH", 100.0, " %" };
+    PremiumKnob ceiling { "CEILING", -1.0, " dB" };
 
     juce::ComboBox sourceMic, targetMic, micCharProfile, preampMode, tubeType, vuMode, consoleMode, presets;
     juce::ToggleButton micCharBypass { "BYPASS" };
     juce::ToggleButton micCharSimpleMode { "SIMPLE" };
-    juce::ToggleButton hardwareSafe { "SAFE" };
+    juce::ToggleButton hardwareSafe { "HARDWARE SAFE" };
     juce::ToggleButton compressorEnable { "COMP ON" };
     juce::ToggleButton limiter { "LIMITER" };
     juce::ToggleButton bypass { "BYPASS" };
@@ -133,15 +133,15 @@ private:
 
     PremiumKnob compMixKnob     { "MIX",  100.0, " %" };
     PremiumKnob compDriveKnob   { "DRIVE", 0.0,  " %" };
-    PremiumKnob compDensityKnob { "DENS",  0.0,  " %" };
-    PremiumKnob compWarmthKnob  { "WARM",  0.0,  " %" };
-    PremiumKnob compOutputKnob  { "OUT",   0.0,  " dB" };
-    HorizontalReductionMeter compGrMeter { "COMP GR" };
+    PremiumKnob compDensityKnob { "DENSITY",  0.0,  " %" };
+    PremiumKnob compWarmthKnob  { "WARMTH",  0.0,  " %" };
+    PremiumKnob compOutputKnob  { "OUTPUT",   0.0,  " dB" };
+    HorizontalReductionMeter compGrMeter { "GAIN REDUCTION" };
     juce::Label compTargetGrLabel;
 
     // Legacy / auxiliary compressor controls
     PremiumKnob compInputKnob    { "INPUT",  0.0,  " dB" };
-    PremiumKnob compSidechainKnob { "HPF",   90.0, " Hz" };
+    PremiumKnob compSidechainKnob { "SC HPF",   90.0, " Hz" };
 
     // Emotion Lock controls
     juce::ToggleButton emotionLockBtn { "EMOTION LOCK" };
@@ -161,8 +161,8 @@ private:
     AuraBigHeatRing auraHeatRing;
     std::array<AuraBigStageLed, 9> auraBigStageLeds {{
         AuraBigStageLed { "IN" }, AuraBigStageLed { "TONE" }, AuraBigStageLed { "TUBE" },
-        AuraBigStageLed { "EDGE" }, AuraBigStageLed { "IRON" }, AuraBigStageLed { "DENS" },
-        AuraBigStageLed { "AIR" }, AuraBigStageLed { "WID" }, AuraBigStageLed { "LIM" }
+        AuraBigStageLed { "EDGE" }, AuraBigStageLed { "IRON" }, AuraBigStageLed { "DENSITY" },
+        AuraBigStageLed { "AIR" }, AuraBigStageLed { "WIDTH" }, AuraBigStageLed { "LIMIT" }
     }};
 
     std::unique_ptr<ExpandedEQPanel> expandedEQPanel;

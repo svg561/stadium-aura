@@ -208,80 +208,85 @@ void TubeChamberComponent::paint (juce::Graphics& g)
 {
     auto b = getLocalBounds().toFloat().reduced (3.0f);
     RackDrawing::paintInsetDisplay (g, b);
-
-    g.setColour (juce::Colour (0xffb88848));
-    g.setFont (juce::FontOptions (7.5f, juce::Font::bold));
-    auto header = b.removeFromTop (13.0f);
-    g.drawText ("TUBE CHAMBER", header, juce::Justification::centred);
-
-    auto window = b.reduced (6.0f, 4.0f);
-
-    // Dark glass background for the window
-    juce::ColourGradient glass (juce::Colour (0xff1a1210), window.getX(), window.getY(),
-                                juce::Colour (0xff0a0806), window.getRight(), window.getBottom(), true);
-    g.setGradientFill (glass);
-    g.fillRoundedRectangle (window, 5.0f);
-    g.setColour (juce::Colour (0x33c88840));
-    g.drawRoundedRectangle (window.reduced (0.5f), 5.0f, 1.0f);
-
-    // Draw three vacuum tubes — narrow 20 px capsules, tall height, proper pill shape
-    const auto alpha = 0.22f + activity * 0.78f;
-    const auto glowAlpha = activity * activity;   // non-linear warm-up glow
-    const float tubeW = juce::jlimit (16.0f, 22.0f, window.getWidth() / 3.0f - 8.0f);
-    const float tubeH = juce::jlimit (60.0f, 120.0f, window.getHeight() - 16.0f);
-    const float tubeRadius = tubeW * 0.40f;       // pill/capsule shape
-
+    auto header = b.removeFromTop (16.0f);
+    g.setColour (juce::Colour (0xffffc46a));
+    g.setFont (juce::FontOptions (8.5f, juce::Font::bold));
+    g.drawText ("CLASS A TUBE CHAMBER", header, juce::Justification::centred);
+    auto window = b.reduced (7.0f, 5.0f);
+    juce::ColourGradient bay (juce::Colour (0xff1a1009), window.getX(), window.getY(),
+                              juce::Colour (0xff050403), window.getRight(), window.getBottom(), true);
+    g.setGradientFill (bay);
+    g.fillRoundedRectangle (window, 8.0f);
+    g.setColour (juce::Colour (0x18ff9a2e));
+    for (float x = window.getX() + 8.0f; x < window.getRight(); x += 11.0f)
+        g.drawVerticalLine (juce::roundToInt (x), window.getY() + 6.0f, window.getBottom() - 6.0f);
+    g.setColour (juce::Colour (0x42d08a36));
+    g.drawRoundedRectangle (window.reduced (0.5f), 8.0f, 1.2f);
+    const float heat = juce::jlimit (0.0f, 1.0f, activity);
+    const float red  = juce::jlimit (0.0f, 1.0f, distortionLevel);
+    const float slot = window.getWidth() / 3.0f;
+    const float tubeW = juce::jlimit (24.0f, 38.0f, slot * 0.42f);
+    const float tubeH = juce::jlimit (74.0f, 142.0f, window.getHeight() - 22.0f);
     for (int i = 0; i < 3; ++i)
     {
-        const float cx = window.getX() + (i + 0.5f) * (window.getWidth() / 3.0f);
-        auto tube = juce::Rectangle<float> (cx - tubeW * 0.5f, window.getY() + 8.0f, tubeW, tubeH);
-
-        // Outer glow halo
-        if (glowAlpha > 0.0f)
+        const float cx = window.getX() + slot * (static_cast<float> (i) + 0.5f);
+        auto tube = juce::Rectangle<float> (cx - tubeW * 0.5f,
+                                            window.getCentreY() - tubeH * 0.5f,
+                                            tubeW,
+                                            tubeH);
+        const float bloom = juce::jlimit (0.0f, 1.0f, heat * 0.88f + red * 0.28f);
+        juce::ColourGradient halo (juce::Colour (0xffff8a19).withAlpha (0.34f * bloom),
+                                   tube.getCentreX(), tube.getCentreY(),
+                                   juce::Colour (0xffff210c).withAlpha (0.0f),
+                                   tube.getCentreX(), tube.getY() - 20.0f,
+                                   true);
+        g.setGradientFill (halo);
+        g.fillEllipse (tube.expanded (18.0f, 16.0f));
+        auto socket = tube.withY (tube.getBottom() - 10.0f).withHeight (16.0f).expanded (4.0f, 0.0f);
+        juce::ColourGradient socketGrad (juce::Colour (0xff2a2117), socket.getX(), socket.getY(),
+                                         juce::Colour (0xff070605), socket.getX(), socket.getBottom(), false);
+        g.setGradientFill (socketGrad);
+        g.fillRoundedRectangle (socket, 5.0f);
+        g.setColour (juce::Colour (0xff9f713b).withAlpha (0.55f));
+        g.drawRoundedRectangle (socket, 5.0f, 0.9f);
+        auto glass = tube.reduced (1.0f, 0.0f).withTrimmedBottom (8.0f);
+        const float radius = glass.getWidth() * 0.48f;
+        juce::ColourGradient glassFill (juce::Colour (0x44ffffff), glass.getX(), glass.getY(),
+                                        juce::Colour (0x08000000), glass.getRight(), glass.getBottom(), false);
+        g.setGradientFill (glassFill);
+        g.fillRoundedRectangle (glass, radius);
+        auto plate = glass.reduced (glass.getWidth() * 0.32f, 10.0f);
+        juce::Colour hotAmber = juce::Colour (0xffff9b21).interpolatedWith (juce::Colour (0xffff2a12), red);
+        juce::ColourGradient plateGrad (hotAmber.withAlpha (0.25f + heat * 0.58f),
+                                        plate.getCentreX(), plate.getBottom(),
+                                        juce::Colour (0xff2a1304).withAlpha (0.36f),
+                                        plate.getCentreX(), plate.getY(), false);
+        g.setGradientFill (plateGrad);
+        g.fillRoundedRectangle (plate, plate.getWidth() * 0.42f);
+        if (red > 0.08f)
         {
-            juce::ColourGradient halo (juce::Colour::fromFloatRGBA (1.0f, 0.55f, 0.05f, glowAlpha * 0.55f),
-                                       tube.getCentreX(), tube.getCentreY(),
-                                       juce::Colour::fromFloatRGBA (0.9f, 0.35f, 0.0f, 0.0f),
-                                       tube.getCentreX(), tube.getY() - 6.0f, true);
-            g.setGradientFill (halo);
-            g.fillEllipse (tube.expanded (10.0f, 8.0f));
+            auto core = plate.reduced (plate.getWidth() * 0.35f, 8.0f);
+            g.setColour (juce::Colour (0xffff220a).withAlpha (red * 0.70f));
+            g.fillRoundedRectangle (core, core.getWidth() * 0.5f);
         }
-
-        // Tube glass body — color driven by distortionLevel + activity
-        juce::Colour tubeBaseColour;
-        if (distortionLevel > 0.5f)
-            tubeBaseColour = juce::Colour (0xffff2a14).interpolatedWith (juce::Colour (0xffff8c14), 1.0f - distortionLevel);
-        else if (activity > 0.7f)
-            tubeBaseColour = juce::Colour (0xffff8c14);
-        else
-            tubeBaseColour = juce::Colour (0xffff9f3a).withAlpha (0.4f + activity * 0.6f);
-
-        juce::ColourGradient tubeGrad (
-            tubeBaseColour.withAlpha (alpha),
-            tube.getCentreX(), tube.getBottom(),
-            juce::Colour::fromFloatRGBA (0.15f, 0.10f, 0.04f, alpha * 0.7f),
-            tube.getCentreX(), tube.getY(), false);
-        g.setGradientFill (tubeGrad);
-        g.fillRoundedRectangle (tube, tubeRadius);
-
-        // Glass highlight sheen on the left face
-        juce::ColourGradient sheen (juce::Colour (0x44ffffff), tube.getX() + 2.0f, tube.getY(),
-                                    juce::Colour (0x00ffffff), tube.getCentreX(), tube.getBottom(), false);
-        g.setGradientFill (sheen);
-        g.fillRoundedRectangle (tube.reduced (1.0f, 1.0f), tubeRadius - 1.0f);
-
-        // Outer rim
-        g.setColour (juce::Colour::fromFloatRGBA (0.95f, 0.72f, 0.35f, alpha));
-        g.drawRoundedRectangle (tube, tubeRadius, 1.0f);
-
-        // Filament glow at the base
-        g.setColour (juce::Colour::fromFloatRGBA (1.0f, 0.90f, 0.50f, alpha * 0.85f));
-        g.fillEllipse (tube.getCentreX() - 2.5f, tube.getBottom() - 12.0f, 5.0f, 10.0f);
-
-        // Pin leads at the bottom
-        g.setColour (juce::Colour (0xff8a7050));
+        g.setColour (juce::Colour (0xffffe6a5).withAlpha (0.28f + heat * 0.58f));
+        const float f1 = glass.getX() + glass.getWidth() * 0.38f;
+        const float f2 = glass.getX() + glass.getWidth() * 0.62f;
+        g.drawLine (f1, glass.getY() + 12.0f, f1, glass.getBottom() - 10.0f, 1.2f);
+        g.drawLine (f2, glass.getY() + 12.0f, f2, glass.getBottom() - 10.0f, 1.2f);
+        g.drawLine (f1, glass.getBottom() - 13.0f, f2, glass.getBottom() - 13.0f, 1.0f);
+        g.setColour (juce::Colour (0xffd9efff).withAlpha (0.24f));
+        g.drawRoundedRectangle (glass, radius, 1.0f);
+        g.setColour (juce::Colours::white.withAlpha (0.18f));
+        g.drawLine (glass.getX() + glass.getWidth() * 0.24f,
+                    glass.getY() + 8.0f,
+                    glass.getX() + glass.getWidth() * 0.24f,
+                    glass.getBottom() - 8.0f,
+                    1.1f);
+        g.setColour (juce::Colour (0xffc4975f).withAlpha (0.75f));
         for (int p = -1; p <= 1; ++p)
-            g.drawLine (tube.getCentreX() + p * 3.5f, tube.getBottom(), tube.getCentreX() + p * 3.5f, tube.getBottom() + 5.0f, 0.9f);
+            g.drawLine (glass.getCentreX() + p * 4.5f, socket.getBottom() - 2.0f,
+                        glass.getCentreX() + p * 4.5f, socket.getBottom() + 5.0f, 1.0f);
     }
 }
 
@@ -379,7 +384,7 @@ void EqSpectrumComponent::paint (juce::Graphics& g)
 
     g.setColour (juce::Colour (0xffc9a060));
     g.setFont (juce::FontOptions (expanded ? 13.0f : 9.0f, juce::Font::bold));
-    g.drawText (expanded ? "EQ EDITOR - POST" : "EQ (Click to Expand)",
+    g.drawText (expanded ? "AURA EQ EDITOR - POST" : "AURA EQ  |  EXPAND",
                 b.removeFromTop (expanded ? 26.0f : 14.0f).toNearestInt(), juce::Justification::centredLeft);
     if (expanded)
     {
