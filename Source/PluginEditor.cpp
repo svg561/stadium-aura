@@ -302,10 +302,11 @@ void StadiumAuraAudioProcessorEditor::updateCompressorControlVisibility()
     const auto model = static_cast<AuraCompressorModel> (modelIndex);
     compTimingMode.setVisible (model == AuraCompressorModel::AuraTube);
     compScHpfMode.setVisible (model == AuraCompressorModel::AuraTube || model == AuraCompressorModel::AuraDrums);
+    compSidechainKnob.setVisible (model == AuraCompressorModel::AuraTube || model == AuraCompressorModel::AuraDrums);
     compWarmthKnob.setVisible (model == AuraCompressorModel::Aura2A || model == AuraCompressorModel::AuraDensity);
     compDensityKnob.setVisible (model == AuraCompressorModel::AuraDensity);
     compDriveKnob.setVisible (model != AuraCompressorModel::AuraLimiter);
-    compAmount.setVisible (model == AuraCompressorModel::Aura2A);
+    compAmount.setVisible (model == AuraCompressorModel::Aura2A || model == AuraCompressorModel::AuraDensity);
 }
 
 void StadiumAuraAudioProcessorEditor::layoutKnobRow (juce::Rectangle<int>& area, std::initializer_list<juce::Slider*> knobs)
@@ -619,25 +620,65 @@ void StadiumAuraAudioProcessorEditor::resized()
     {
         auto ra = right.reduced (kPanelPadding, kPanelTop);
 
-        auto bypassRow = ra.removeFromTop (kBtnH);
-        compBypassBtn.setBounds (bypassRow.removeFromRight (72).reduced (2));
-        compressorEnable.setBounds (bypassRow.removeFromRight (72).reduced (2));
-
         compModelBar.setBounds (ra.removeFromTop (28));
         ra.removeFromTop (kGap);
         compProfileBar.setBounds (ra.removeFromTop (24));
         ra.removeFromTop (kGap);
 
-        auto optionRow = ra.removeFromTop (kDropdownH);
-        compTimingMode.setBounds (optionRow.removeFromLeft (optionRow.getWidth() / 2).reduced (2, 0));
-        compScHpfMode.setBounds  (optionRow.reduced (2, 0));
+        auto featureRow = ra.removeFromTop (kBtnH);
+        {
+            auto leftHalf = featureRow.removeFromLeft (featureRow.getWidth() / 2);
+            const int btnW = juce::jmin (96, leftHalf.getWidth() * 2 / 3);
+            emotionLockBtn.setBounds (leftHalf.removeFromLeft (btnW).reduced (2));
+            emotionLockStatusLabel.setBounds (leftHalf.reduced (2, 4));
 
+            const int alBtnW = juce::jmin (96, featureRow.getWidth() * 2 / 3);
+            auraLevelBtn.setBounds (featureRow.removeFromLeft (alBtnW).reduced (2));
+            auraLevelStateLabel.setBounds (featureRow.reduced (2, 4));
+        }
         ra.removeFromTop (kGap);
+
+        auto bypassRow = ra.removeFromTop (kBtnH);
+        compBypassBtn.setBounds (bypassRow.removeFromRight (72).reduced (2));
+        compressorEnable.setBounds (bypassRow.removeFromRight (72).reduced (2));
+
+        updateCompressorControlVisibility();
+
+        const auto modelIndex = juce::jlimit (0, 5,
+            static_cast<int> (processorRef.apvts.getRawParameterValue ("COMP_MODEL")->load()));
+        const auto model = static_cast<AuraCompressorModel> (modelIndex);
+        const bool showOptionRow = compTimingMode.isVisible() || compScHpfMode.isVisible();
+        if (showOptionRow)
+        {
+            auto optionRow = ra.removeFromTop (kDropdownH);
+            if (compTimingMode.isVisible() && compScHpfMode.isVisible())
+            {
+                compTimingMode.setBounds (optionRow.removeFromLeft (optionRow.getWidth() / 2).reduced (2, 0));
+                compScHpfMode.setBounds  (optionRow.reduced (2, 0));
+            }
+            else if (compTimingMode.isVisible())
+                compTimingMode.setBounds (optionRow.reduced (2, 0));
+            else
+                compScHpfMode.setBounds (optionRow.reduced (2, 0));
+            ra.removeFromTop (kGap);
+        }
+        else
+        {
+            compTimingMode.setBounds ({});
+            compScHpfMode.setBounds ({});
+        }
+
         compGrMeter.setBounds (ra.removeFromTop (22).reduced (2, 0));
         compTargetGrLabel.setBounds (ra.removeFromTop (14).reduced (2, 0));
         ra.removeFromTop (kGap);
 
-        const int compKH = juce::jmax (56, juce::jmin (80, (ra.getHeight() - 80) / 4));
+        const bool showModelRow = compAmount.isVisible() || compWarmthKnob.isVisible()
+                               || compDensityKnob.isVisible() || compSidechainKnob.isVisible();
+        const int knobRows = 4 + (showModelRow ? 1 : 0);
+        const int outputReserve = 88;
+        const int compKH = juce::jmax (56, juce::jmin (80,
+            (ra.getHeight() - outputReserve - kGap * (knobRows - 1)) / knobRows));
+
         auto cr1 = ra.removeFromTop (compKH);
         layoutKnobGrid (cr1, 2, { &compInputKnob, &threshold });
         ra.removeFromTop (kGap);
@@ -649,20 +690,32 @@ void StadiumAuraAudioProcessorEditor::resized()
         ra.removeFromTop (kGap);
         auto cr4 = ra.removeFromTop (compKH);
         layoutKnobGrid (cr4, 2, { &compDriveKnob, &compOutputKnob });
+        ra.removeFromTop (kGap);
 
-        compDensityKnob.setBounds (cr4.withWidth (0)); // placed via visibility; reuse row when visible
-        compWarmthKnob.setBounds ({});
-        compAmount.setBounds ({});
-        compMakeup.setBounds ({});
-        compSidechainKnob.setBounds ({});
+        if (showModelRow)
+        {
+            auto cr5 = ra.removeFromTop (compKH);
+            if (model == AuraCompressorModel::Aura2A)
+                layoutKnobGrid (cr5, 2, { &compAmount, &compWarmthKnob });
+            else if (model == AuraCompressorModel::AuraDensity)
+                layoutKnobGrid (cr5, 3, { &compAmount, &compWarmthKnob, &compDensityKnob });
+            else if (model == AuraCompressorModel::AuraTube || model == AuraCompressorModel::AuraDrums)
+                compSidechainKnob.setBounds (cr5.withSizeKeepingCentre (
+                    juce::jmin (cr5.getWidth() - 8, 76), juce::jmin (cr5.getHeight() - 4, 76)));
+            ra.removeFromTop (kGap);
+        }
+        else
+        {
+            compAmount.setBounds ({});
+            compWarmthKnob.setBounds ({});
+            compDensityKnob.setBounds ({});
+            compSidechainKnob.setBounds ({});
+        }
+
         compModeButtons.setBounds ({});
         bleed.setBounds ({});
         vuMeter.setBounds ({});
         vuMode.setBounds ({});
-        emotionLockBtn.setBounds ({});
-        auraLevelBtn.setBounds ({});
-        emotionLockStatusLabel.setBounds ({});
-        auraLevelStateLabel.setBounds ({});
 
         if (ra.getHeight() >= 48)
         {
@@ -674,8 +727,6 @@ void StadiumAuraAudioProcessorEditor::resized()
             ceiling.setBounds    (oArea.withSizeKeepingCentre (oSize, oSize));
             width.setBounds (ra.removeFromTop (oKH).withSizeKeepingCentre (oSize, oSize));
         }
-
-        updateCompressorControlVisibility();
     }
 
     // ── EQ STRIP ─────────────────────────────────────────────────────────────

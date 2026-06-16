@@ -82,8 +82,7 @@ private:
     PremiumKnob badFreq { "BAD", 35.0, " %" };
     PremiumKnob preampDrive { "DRV", 25.0, " %" };
     PremiumKnob aura { "AURA", 0.0, " %" };
-    PremiumKnob compAmount { "COMP", 0.0, " %" };
-    PremiumKnob compMakeup { "MK", 0.0, " dB" };
+    PremiumKnob compAmount { "AMT", 0.0, " %" };
     PremiumKnob attack { "ATK", 20.0, " ms" };
     PremiumKnob release { "REL", 400.0, " ms" };
     PremiumKnob threshold { "THR", -18.0, " dB" };
