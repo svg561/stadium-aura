@@ -4,10 +4,25 @@
 
 namespace RackDrawing
 {
+namespace Palette
+{
+    inline juce::Colour panelTop()      { return juce::Colour (0xff15191D); }
+    inline juce::Colour panelBottom()   { return juce::Colour (0xff0A0D10); }
+    inline juce::Colour accentGold()    { return juce::Colour (0xffFFC24A); }
+    inline juce::Colour accentGlow()    { return juce::Colour (0xffFF8A22); }
+    inline juce::Colour textPrimary()   { return juce::Colour (0xffF2E6CC); }
+    inline juce::Colour textSecondary() { return juce::Colour (0xffAFA79A); }
+    inline juce::Colour textDim()       { return juce::Colour (0xff6F6A62); }
+    inline juce::Colour safeGreen()     { return juce::Colour (0xff6fcf4a); }
+    inline juce::Colour clipRed()       { return juce::Colour (0xffe04030); }
+    inline juce::Colour insetBg()       { return juce::Colour (0xff040506); }
+    inline juce::Colour insetBorder()   { return juce::Colour (0xff2a2118); }
+}
+
 inline void paintBrushedMetal (juce::Graphics& g, juce::Rectangle<float> area, bool vertical = true)
 {
-    juce::ColourGradient base (juce::Colour (0xff1a1c1f), area.getX(), area.getY(),
-                               juce::Colour (0xff0a0b0d), area.getRight(), area.getBottom(), false);
+    juce::ColourGradient base (Palette::panelTop(), area.getX(), area.getY(),
+                               Palette::panelBottom(), area.getRight(), area.getBottom(), false);
     g.setGradientFill (base);
     g.fillRect (area);
     for (int i = 0; i < juce::roundToInt (vertical ? area.getHeight() : area.getWidth()); i += 2)
@@ -19,7 +34,7 @@ inline void paintBrushedMetal (juce::Graphics& g, juce::Rectangle<float> area, b
 }
 
 inline void paintRackModule (juce::Graphics& g, juce::Rectangle<float> bounds, const juce::String& title,
-                             juce::Colour accent = juce::Colour (0xffc58a38))
+                             juce::Colour accent = Palette::accentGold())
 {
     g.setColour (juce::Colour (0x66000000));
     g.fillRoundedRectangle (bounds.translated (0.0f, 2.0f), 5.0f);
@@ -29,12 +44,12 @@ inline void paintRackModule (juce::Graphics& g, juce::Rectangle<float> bounds, c
     g.setColour (juce::Colour (0x22ffffff));
     g.drawLine (bounds.getX() + 6.0f, bounds.getY() + 1.0f, bounds.getRight() - 6.0f, bounds.getY() + 1.0f, 1.0f);
     auto header = bounds.removeFromTop (24.0f).reduced (4.0f, 2.0f);
-    g.setColour (juce::Colour (0xff0d0f11));
+    g.setColour (Palette::panelBottom());
     g.fillRoundedRectangle (header, 3.0f);
     g.setColour (accent);
     g.drawRoundedRectangle (header.reduced (0.5f), 3.0f, 0.8f);
-    g.setColour (juce::Colour (0xffe8c070));
-    g.setFont (juce::FontOptions (10.0f, juce::Font::bold));
+    g.setColour (Palette::textPrimary());
+    g.setFont (juce::FontOptions (13.5f, juce::Font::bold).withKerningFactor (0.08f));
     g.drawText (title.toUpperCase(), header, juce::Justification::centred);
 }
 
@@ -58,11 +73,56 @@ inline void paintScrews (juce::Graphics& g, juce::Rectangle<float> frame, float 
 
 inline void paintInsetDisplay (juce::Graphics& g, juce::Rectangle<float> area)
 {
-    g.setColour (juce::Colour (0xff040506));
+    g.setColour (Palette::insetBg());
     g.fillRoundedRectangle (area, 4.0f);
-    g.setColour (juce::Colour (0xff2a2118));
+    g.setColour (Palette::insetBorder());
     g.drawRoundedRectangle (area.reduced (0.5f), 4.0f, 1.0f);
     g.setColour (juce::Colour (0x18ffffff));
     g.drawRoundedRectangle (area.reduced (1.5f), 3.0f, 0.5f);
+}
+
+inline void paintPremiumButton (juce::Graphics& g, juce::Rectangle<float> bounds,
+                                const juce::String& text, bool highlighted, bool down, bool active, bool enabled)
+{
+    if (! enabled)
+    {
+        g.setOpacity (0.35f);
+        highlighted = down = active = false;
+    }
+
+    auto b = bounds.reduced (1.0f);
+    if (down)
+        b = b.translated (0.0f, 1.5f);
+
+    if (active)
+    {
+        g.setColour (Palette::accentGlow().withAlpha (0.28f));
+        g.fillRoundedRectangle (b.expanded (3.0f), 5.0f);
+    }
+    else if (highlighted && enabled)
+    {
+        g.setColour (Palette::accentGold().withAlpha (0.18f));
+        g.fillRoundedRectangle (b.expanded (2.0f), 4.0f);
+    }
+
+    juce::ColourGradient fill (active ? juce::Colour (0xff8a5a18) : juce::Colour (0xff15181c),
+                               b.getX(), b.getY(),
+                               active ? juce::Colour (0xff3a2808) : juce::Colour (0xff080a0c),
+                               b.getRight(), b.getBottom(), false);
+    g.setGradientFill (fill);
+    g.fillRoundedRectangle (b, 4.0f);
+
+    const auto borderCol = ! enabled ? Palette::textDim()
+                         : active || highlighted || down ? Palette::accentGold()
+                         : Palette::textDim().brighter (0.25f);
+    g.setColour (borderCol);
+    g.drawRoundedRectangle (b, 4.0f, active ? 1.4f : 1.0f);
+
+    g.setColour (active ? juce::Colour (0xff0d0a06) : Palette::textPrimary());
+    g.setFont (juce::FontOptions (text.length() > 10 ? 10.0f : 11.5f, juce::Font::bold));
+    g.drawFittedText (text, b.toNearestInt(), juce::Justification::centred, 1);
+
+    if (! enabled)
+        g.setOpacity (1.0f);
 }
 }

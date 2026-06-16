@@ -1,4 +1,5 @@
 #include "EQPanel.h"
+#include "RackDrawing.h"
 #include <cmath>
 
 //==============================================================================
@@ -385,6 +386,7 @@ EQPanel::EQPanel()
 {
     addChildComponent (popup);
     setOpaque (false);
+    setMouseCursor (juce::MouseCursor::PointingHandCursor);
 }
 
 EQPanel::~EQPanel() {}
@@ -428,6 +430,23 @@ void EQPanel::updateFromParameters (juce::AudioProcessorValueTreeState& apvts, d
     repaint();
 }
 
+void EQPanel::setCompactMode (bool shouldBeCompact) noexcept
+{
+    if (compactMode == shouldBeCompact)
+        return;
+    compactMode = shouldBeCompact;
+    setMouseCursor (compactMode ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
+    repaint();
+}
+
+void EQPanel::setEqBypassed (bool bypassed) noexcept
+{
+    if (eqBypassed == bypassed)
+        return;
+    eqBypassed = bypassed;
+    repaint();
+}
+
 void EQPanel::setTone (float value) noexcept { toneValue = value; repaint(); }
 void EQPanel::setAnalyzerLevels (const std::array<float, 48>&) { repaint(); }
 
@@ -451,16 +470,46 @@ void EQPanel::processSpectrumFFT() noexcept
 //------------------------------------------------------------------------------
 void EQPanel::paint (juce::Graphics& g)
 {
+    if (compactMode)
+        drawHeaderBar (g);
+
     auto plot = getPlotBounds();
+    const float dimAlpha = eqBypassed ? 0.45f : 1.0f;
+    g.saveState();
+    g.setOpacity (dimAlpha);
 
     drawBackground (g, plot);
     drawGrid       (g, plot);
-    if (auraTraceOn) drawAuraTrace (g, plot);
+    if (! compactMode || auraTraceOn)
+        drawAuraTrace (g, plot);
     drawAnalyzer   (g, plot);
     drawEQCurve    (g, plot);
     drawNodes      (g, plot);
     drawTooltip    (g);
-    drawDbRangeBar (g);
+    if (! compactMode)
+        drawDbRangeBar (g);
+
+    g.restoreState();
+
+    if (compactMode && hoverGlow)
+    {
+        auto frame = getLocalBounds().toFloat().reduced (1.0f);
+        g.setColour (juce::Colour (0x55FFC24A));
+        g.drawRoundedRectangle (frame, 6.0f, 2.0f);
+        g.setColour (juce::Colour (0x22FF8A22));
+        g.fillRoundedRectangle (frame.expanded (2.0f), 8.0f);
+    }
+}
+
+void EQPanel::drawHeaderBar (juce::Graphics& g) const
+{
+    auto header = getLocalBounds().removeFromTop (18).toFloat().reduced (4.0f, 1.0f);
+    g.setColour (RackDrawing::Palette::textSecondary());
+    g.setFont (juce::FontOptions (11.5f, juce::Font::bold).withKerningFactor (0.04f));
+    g.drawText ("AURA EQ", header.toNearestInt(), juce::Justification::centredLeft);
+    g.setFont (juce::FontOptions (9.0f, juce::Font::bold));
+    g.setColour (RackDrawing::Palette::textDim());
+    g.drawText ("CLICK TO EXPAND", header.withTrimmedLeft (72.0f).toNearestInt(), juce::Justification::centredRight);
 }
 
 void EQPanel::resized()
@@ -471,7 +520,12 @@ void EQPanel::resized()
 //------------------------------------------------------------------------------
 juce::Rectangle<float> EQPanel::getPlotBounds() const
 {
-    return getLocalBounds().toFloat().reduced (4.0f, 2.0f).withTrimmedBottom (24.0f);
+    auto b = getLocalBounds().toFloat().reduced (4.0f, 2.0f);
+    if (compactMode)
+        b.removeFromTop (18.0f);
+    else
+        b = b.withTrimmedBottom (24.0f);
+    return b;
 }
 
 //------------------------------------------------------------------------------
@@ -798,6 +852,17 @@ void EQPanel::setParameterChoice (const juce::String& id, int index)
 //------------------------------------------------------------------------------
 void EQPanel::mouseMove (const juce::MouseEvent& e)
 {
+    if (compactMode)
+    {
+        const bool nowHover = getLocalBounds().contains (e.getPosition());
+        if (nowHover != hoverGlow)
+        {
+            hoverGlow = nowHover;
+            repaint();
+        }
+        return;
+    }
+
     const int h = hitTestNode (e.position);
     if (h != hoveredBand)
     {
@@ -807,8 +872,25 @@ void EQPanel::mouseMove (const juce::MouseEvent& e)
     }
 }
 
+void EQPanel::mouseExit (const juce::MouseEvent& e)
+{
+    juce::ignoreUnused (e);
+    if (compactMode && hoverGlow)
+    {
+        hoverGlow = false;
+        repaint();
+    }
+}
+
 void EQPanel::mouseDown (const juce::MouseEvent& e)
 {
+    if (compactMode)
+    {
+        if (onEmptyAreaClicked)
+            onEmptyAreaClicked();
+        return;
+    }
+
     // Click outside popup dismisses it (if popup is visible and click not on it)
     if (popup.isVisible())
     {

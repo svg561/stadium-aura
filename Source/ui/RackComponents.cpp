@@ -11,7 +11,8 @@ void RackModulePanel::paint (juce::Graphics& g)
 {
     auto bounds = getLocalBounds().toFloat();
     g.setOpacity (routeDimmed ? 0.42f : 1.0f);
-    RackDrawing::paintRackModule (g, bounds, title, routeHighlighted ? juce::Colour (0xffff9a2e) : juce::Colour (0xffc58a38));
+    RackDrawing::paintRackModule (g, bounds, title, routeHighlighted ? RackDrawing::Palette::accentGlow()
+                                                                    : RackDrawing::Palette::accentGold());
     if (routeHighlighted)
     {
         g.setColour (juce::Colour (0x33ff9a2e));
@@ -33,23 +34,8 @@ void NavRouteButton::mouseDown (const juce::MouseEvent& e)
 
 void NavRouteButton::paintButton (juce::Graphics& g, bool highlighted, bool down)
 {
-    auto b = getLocalBounds().toFloat().reduced (1.0f);
-    const auto active = getToggleState();
-    if (active)
-    {
-        g.setColour (juce::Colour (0x55ff9a2e));
-        g.fillRoundedRectangle (b.expanded (3.0f), 5.0f);
-    }
-    juce::ColourGradient fill (active ? juce::Colour (0xffa86818) : juce::Colour (0xff181b1f),
-                               b.getX(), b.getY(), active ? juce::Colour (0xff4a3010) : juce::Colour (0xff0a0c0e),
-                               b.getRight(), b.getBottom(), false);
-    g.setGradientFill (fill);
-    g.fillRoundedRectangle (b, 4.0f);
-    g.setColour (active ? juce::Colour (0xffffd27a) : juce::Colour (0xff5f5340));
-    g.drawRoundedRectangle (b, 4.0f, active ? 1.4f : 0.9f);
-    g.setColour (active ? juce::Colour (0xff100c08) : juce::Colour (0xffd8c7a4));
-    g.setFont (juce::FontOptions (9.5f, juce::Font::bold));
-    g.drawText (getButtonText(), b.toNearestInt(), juce::Justification::centred);
+    RackDrawing::paintPremiumButton (g, getLocalBounds().toFloat(), getButtonText(),
+                                     highlighted, down, getToggleState(), isEnabled());
 }
 
 IconBarButton::IconBarButton (juce::String label, bool enabled)

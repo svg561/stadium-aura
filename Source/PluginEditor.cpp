@@ -9,6 +9,41 @@ constexpr const char* sectionEnableIds[] {
     "micSectionEnable", "preampSectionEnable", "compressorEnable",
     "harmonicsSectionEnable", "sumSectionEnable", "masterSectionEnable", nullptr
 };
+
+constexpr int kDesignW = 1536;
+constexpr int kDesignH = 920;
+
+juce::Rectangle<int> designRect (float sx, float sy, int x0, int y0, int x1, int y1) noexcept
+{
+    return { juce::roundToInt (static_cast<float> (x0) * sx),
+             juce::roundToInt (static_cast<float> (y0) * sy),
+             juce::roundToInt (static_cast<float> (x1 - x0) * sx),
+             juce::roundToInt (static_cast<float> (y1 - y0) * sy) };
+}
+
+void layoutKnobInCell (juce::Rectangle<int> cell, juce::Slider& knob, int knobPx) noexcept
+{
+    const int labelAndValue = 36;
+    const int knobSize = juce::jmin (knobPx, cell.getWidth() - 4, cell.getHeight() - labelAndValue);
+    knob.setBounds (cell.withSizeKeepingCentre (knobSize, knobSize + labelAndValue));
+}
+
+void layoutKnobRowInArea (juce::Rectangle<int> area, int columns, std::initializer_list<juce::Slider*> knobs, int knobPx)
+{
+    const auto n = static_cast<int> (knobs.size());
+    if (n <= 0 || columns <= 0) return;
+    const auto cellW = juce::jmax (1, area.getWidth() / columns);
+    const auto cellH = juce::jmax (1, area.getHeight());
+    int index = 0;
+    for (auto* knob : knobs)
+    {
+        const auto col = index % columns;
+        const auto row = index / columns;
+        const juce::Rectangle<int> cell (area.getX() + col * cellW, area.getY() + row * cellH, cellW, cellH);
+        layoutKnobInCell (cell.reduced (2, 1), *knob, knobPx);
+        ++index;
+    }
+}
 }
 
 StadiumAuraAudioProcessorEditor::StadiumAuraAudioProcessorEditor (StadiumAuraAudioProcessor& p)
@@ -16,22 +51,27 @@ StadiumAuraAudioProcessorEditor::StadiumAuraAudioProcessorEditor (StadiumAuraAud
 {
     setLookAndFeel (&lookAndFeel);
     setResizable (true, true);
-    setResizeLimits (1200, 760, 1920, 1150);
-    setSize (1440, 920);
+    setResizeLimits (1280, 760, 2560, 1200);
+    setSize (1536, 920);
     aura.setHeroStyle (true);
+    aura.setHideNameLabel (true);
 
-    logoTitle.setText ("Stadium Aura", juce::dontSendNotification);
-    logoTitle.setFont (juce::FontOptions (28.0f, juce::Font::bold));
-    logoTitle.setColour (juce::Label::textColourId, juce::Colour (0xfff0d2a0));
-    logoTitle.setJustificationType (juce::Justification::centred);
-    logoSubtitle.setText ("PREMIUM ANALOG STAGE & DYNAMICS PROCESSOR", juce::dontSendNotification);
-    logoSubtitle.setFont (juce::FontOptions (9.5f, juce::Font::bold));
-    logoSubtitle.setColour (juce::Label::textColourId, juce::Colour (0xffc58a3d));
-    logoSubtitle.setJustificationType (juce::Justification::centred);
+    logoTitle.setText ("STADIUM AURA", juce::dontSendNotification);
+    logoTitle.setFont (juce::FontOptions (33.0f, juce::Font::bold).withKerningFactor (0.12f));
+    logoTitle.setColour (juce::Label::textColourId, juce::Colour (0xffF2E6CC));
+    logoTitle.setJustificationType (juce::Justification::centredLeft);
+    logoSubtitle.setText ("ANALOG CREATIVE PROCESSOR", juce::dontSendNotification);
+    logoSubtitle.setFont (juce::FontOptions (11.0f, juce::Font::bold).withKerningFactor (0.08f));
+    logoSubtitle.setColour (juce::Label::textColourId, juce::Colour (0xffAFA79A));
+    logoSubtitle.setJustificationType (juce::Justification::centredLeft);
     presetCard.setJustificationType (juce::Justification::centred);
     presetCard.setFont (juce::FontOptions (11.0f, juce::Font::bold));
     presetCard.setColour (juce::Label::textColourId, juce::Colour (0xffe8c98d));
     presetCard.setColour (juce::Label::backgroundColourId, juce::Colour (0xff101418));
+    factoryPresetLabel.setText ("Factory Preset", juce::dontSendNotification);
+    factoryPresetLabel.setJustificationType (juce::Justification::centred);
+    factoryPresetLabel.setFont (juce::FontOptions (9.0f, juce::Font::bold));
+    factoryPresetLabel.setColour (juce::Label::textColourId, juce::Colour (0xff8d806c));
     latencyLabel.setJustificationType (juce::Justification::centredRight);
     latencyLabel.setFont (juce::FontOptions (9.0f, juce::Font::bold));
     latencyLabel.setColour (juce::Label::textColourId, juce::Colour (0xff8d806c));
@@ -49,23 +89,25 @@ StadiumAuraAudioProcessorEditor::StadiumAuraAudioProcessorEditor (StadiumAuraAud
     }
     sweetLow.setText ("LOW", juce::dontSendNotification);
     sweetHot.setText ("HOT", juce::dontSendNotification);
-    for (auto* label : { &logoTitle, &logoSubtitle, &presetCard, &latencyLabel, &oversamplingLabel, &monitorLabel })
+    for (auto* label : { &logoTitle, &logoSubtitle, &presetCard, &factoryPresetLabel,
+                         &latencyLabel, &oversamplingLabel, &monitorLabel })
         addAndMakeVisible (*label);
 
-    for (auto* panel : { &leftPanel, &heroPanel, &rightPanel, &eqPanel })
+    for (auto* panel : { &micSourcePanel, &micCharPanel, &preampPanel, &bigAuraPanel, &compressorPanel })
         addAndMakeVisible (*panel);
 
     const std::pair<juce::Slider*, const char*> sliders[] {
         { &inputKnob, "input" }, { &outputKnob, "output" },
         { &inputFader, "input" }, { &outputFader, "output" },
         { &bodyKnob, "MIC_CHAR_BODY" }, { &presenceKnob, "MIC_CHAR_PRESENCE" }, { &airKnob, "MIC_CHAR_AIR" },
-        { &micCharColorKnob, "MIC_CHAR_COLOR" }, { &micCharOutputKnob, "MIC_CHAR_OUTPUT_TRIM" },
+        { &micCharAmountKnob, "MIC_CHAR_COLOR" }, { &micCharOutputKnob, "MIC_CHAR_OUTPUT_TRIM" },
         { &micCharInputTrimKnob, "MIC_CHAR_INPUT_TRIM" }, { &micCharProximityKnob, "MIC_CHAR_PROXIMITY" },
         { &micCharDeHarshKnob, "MIC_CHAR_DEHARSH" }, { &micCharSibilanceKnob, "MIC_CHAR_SIBILANCE" },
         { &tubeDriveKnob, "tubeDrive" }, { &saturation, "saturation" }, { &tubeBias, "harmonicBias" },
         { &transformer, "transformer" }, { &summing, "summing" }, { &glue, "glue" },
         { &correction, "micCorrectionAmount" }, { &targetAmount, "micTargetAmount" }, { &badFreq, "badFrequencyTamer" },
-        { &preampDrive, "preampDrive" },
+        { &bodyProtectKnob, "bodyProtection" }, { &airProtectKnob, "airProtection" },
+        { &preampDrive, "preampDrive" }, { &preampToneKnob, "tone" }, { &preampOutputKnob, "tubeOutputDb" },
         { &compInputKnob,   "COMP_INPUT"     }, { &threshold,   "COMP_THRESHOLD" },
         { &ratio,           "COMP_RATIO"     }, { &attack,      "COMP_ATTACK"    },
         { &release,         "COMP_RELEASE"   }, { &compMixKnob, "COMP_MIX"       },
@@ -94,6 +136,7 @@ StadiumAuraAudioProcessorEditor::StadiumAuraAudioProcessorEditor (StadiumAuraAud
     attachButton (compBypassBtn, "COMP_BYPASS");
     attachButton (limiter, "limiter");
     attachButton (bypass, "bypass");
+    attachButton (eqEnableBtn, "eqEnable");
     attachButton (mono, "monoCheck");
     attachButton (dim, "dim");
     attachButton (emotionLockBtn, "EMOTION_LOCK_ENABLED");
@@ -121,17 +164,22 @@ StadiumAuraAudioProcessorEditor::StadiumAuraAudioProcessorEditor (StadiumAuraAud
                      static_cast<juce::Component*> (&eqDisplay), static_cast<juce::Component*> (&trackButtons),
                      static_cast<juce::Component*> (&compModeButtons), static_cast<juce::Component*> (&qualityBar),
                      static_cast<juce::Component*> (&compModelBar), static_cast<juce::Component*> (&compProfileBar),
-                     static_cast<juce::Component*> (&compGrMeter) })
+                     static_cast<juce::Component*> (&compGrMeter), static_cast<juce::Component*> (&vuModeBar) })
         addAndMakeVisible (*c);
 
     addAndMakeVisible (micCharBypass);
     addAndMakeVisible (micCharSimpleMode);
+    addAndMakeVisible (micCharHpfBtn);
+    micCharHpfBtn.setTooltip ("High-pass filter — TODO: bind when dedicated HPF toggle param exists.");
+    addAndMakeVisible (preampPolarityBtn);
+    preampPolarityBtn.setTooltip ("Input polarity invert — TODO: bind when polarity param exists.");
     micCharSimpleMode.onClick = [this]
     {
         updateMicCharacterControlVisibility();
         resized();
     };
     updateMicCharacterControlVisibility();
+    addAndMakeVisible (eqEnableBtn);
     addAndMakeVisible (compBypassBtn);
     addAndMakeVisible (compTimingMode);
     addAndMakeVisible (compScHpfMode);
@@ -148,11 +196,20 @@ StadiumAuraAudioProcessorEditor::StadiumAuraAudioProcessorEditor (StadiumAuraAud
         addAndMakeVisible (*label);
     }
 
-    auraBigLabel.setText ("AURA BIG", juce::dontSendNotification);
-    auraBigLabel.setFont (juce::FontOptions (22.0f, juce::Font::bold));
-    auraBigLabel.setColour (juce::Label::textColourId, juce::Colour (0xffc8962e));  // gold
-    auraBigLabel.setJustificationType (juce::Justification::centred);
-    addAndMakeVisible (auraBigLabel);
+    auraBigLabel.setVisible (false);
+
+    bigAuraSubtitle.setText ("MAGIC CONTROL", juce::dontSendNotification);
+    bigAuraSubtitle.setFont (juce::FontOptions (10.0f, juce::Font::bold).withKerningFactor (0.06f));
+    bigAuraSubtitle.setColour (juce::Label::textColourId, juce::Colour (0xff8d806c));
+    bigAuraSubtitle.setJustificationType (juce::Justification::centred);
+    addAndMakeVisible (bigAuraSubtitle);
+
+    saMarkLabel.setText ("SA", juce::dontSendNotification);
+    saMarkLabel.setFont (juce::FontOptions (14.0f, juce::Font::bold));
+    saMarkLabel.setColour (juce::Label::textColourId, juce::Colour (0xffc8962e));
+    saMarkLabel.setJustificationType (juce::Justification::centred);
+    addAndMakeVisible (saMarkLabel);
+    saMarkLabel.setVisible (true);
     addAndMakeVisible (auraHeatRing);
     auraHeatRing.toBack();
 
@@ -189,10 +246,26 @@ StadiumAuraAudioProcessorEditor::StadiumAuraAudioProcessorEditor (StadiumAuraAud
     refreshCompressorProfileBar();
     updateCompressorControlVisibility();
 
+    vuModeBar.setChoices ({ "IN", "GR", "OUT" });
+    vuModeBar.setSelectedIndex (1, juce::dontSendNotification);
+    vuModeBar.onChange = [this] (int index) { setChoiceParameter ("vuMeterMode", index); };
+
     qualityBar.setChoices ({ "ECO", "NORMAL", "HIGH", "ULTRA" });
     qualityBar.setSelectedIndex (2, juce::dontSendNotification);
     qualityBar.onChange = [this] (int index) { setChoiceParameter ("quality", index); };
 
+    transformer.setTooltip ("Adds modeled iron weight and low-mid density.");
+    aura.setTooltip ("Signature harmonic tone and sweet-zone intensity.");
+    tubeBias.setTooltip ("Shifts tube response from cleaner to richer.");
+    micCharDeHarshKnob.setTooltip ("Reduces sharp upper-mid vocal harshness.");
+    bodyProtectKnob.setTooltip ("Protects vocal thickness while correcting tone.");
+    airProtectKnob.setTooltip ("Preserves top-end clarity while smoothing harshness.");
+    bypass.setTooltip ("Global plugin bypass.");
+    eqEnableBtn.setTooltip ("Enable or disable the Aura EQ processing chain.");
+    compressorEnable.setTooltip ("Enable or disable the compressor engine.");
+    limiter.setTooltip ("Enable or disable the safety limiter.");
+
+    eqDisplay.setCompactMode (true);
     eqDisplay.onExpandedChanged = [this] (bool)
     {
         resized();
@@ -205,24 +278,15 @@ StadiumAuraAudioProcessorEditor::StadiumAuraAudioProcessorEditor (StadiumAuraAud
     eqDisplay.bindToParameters (processorRef.apvts);
 
     // Compact strip click opens the expanded AURA EQ overlay
-    eqDisplay.onEmptyAreaClicked = [this]
-    {
-        if (expandedEQPanel != nullptr)
-        {
-            expandedEQPanel->setVisible (true);
-            expandedEQPanel->toFront (false);
-            resized();
-        }
-    };
+    eqDisplay.onEmptyAreaClicked = [this] { openExpandedEq(); };
+
+    eqModalBackdrop = std::make_unique<EqModalBackdrop>();
+    addChildComponent (*eqModalBackdrop);
 
     // Create and add the expanded EQ panel (initially hidden)
     expandedEQPanel = std::make_unique<ExpandedEQPanel> (processorRef);
     addChildComponent (*expandedEQPanel);
-    expandedEQPanel->onClose = [this]
-    {
-        expandedEQPanel->setVisible (false);
-        resized();
-    };
+    expandedEQPanel->onClose = [this] { closeExpandedEq(); };
 
     const char* routeTips[] {
         "Mic: Source Match + character. Right-click toggles mic DSP bypass.",
@@ -283,6 +347,44 @@ StadiumAuraAudioProcessorEditor::~StadiumAuraAudioProcessorEditor()
     setLookAndFeel (nullptr);
 }
 
+void StadiumAuraAudioProcessorEditor::openExpandedEq()
+{
+    if (expandedEQPanel == nullptr)
+        return;
+    eqModalBackdrop->setBounds (getLocalBounds());
+    eqModalBackdrop->setVisible (true);
+    eqModalBackdrop->toBack();
+    expandedEQPanel->setVisible (true);
+    expandedEQPanel->toFront (false);
+    expandedEQPanel->grabKeyboardFocus();
+    setWantsKeyboardFocus (true);
+    resized();
+}
+
+void StadiumAuraAudioProcessorEditor::closeExpandedEq()
+{
+    if (expandedEQPanel == nullptr)
+        return;
+    expandedEQPanel->setVisible (false);
+    eqModalBackdrop->setVisible (false);
+    resized();
+}
+
+bool StadiumAuraAudioProcessorEditor::keyPressed (const juce::KeyPress& key)
+{
+    if (key == juce::KeyPress::escapeKey && expandedEQPanel != nullptr && expandedEQPanel->isVisible())
+    {
+        closeExpandedEq();
+        return true;
+    }
+    return AudioProcessorEditor::keyPressed (key);
+}
+
+int StadiumAuraAudioProcessorEditor::scaledKnobSize (int minPx, int maxPx, float scale) const noexcept
+{
+    return juce::jlimit (minPx, maxPx, juce::roundToInt (static_cast<float> (maxPx) * scale));
+}
+
 void StadiumAuraAudioProcessorEditor::attachSlider (juce::Slider& slider, const char* id)
 {
     addAndMakeVisible (slider);
@@ -318,16 +420,13 @@ void StadiumAuraAudioProcessorEditor::refreshCompressorProfileBar()
 
 void StadiumAuraAudioProcessorEditor::updateMicCharacterControlVisibility()
 {
-    const bool simple = processorRef.apvts.getRawParameterValue ("MIC_CHAR_SIMPLE_MODE")->load() > 0.5f;
-    micCharInputTrimKnob.setVisible (! simple);
-    micCharProximityKnob.setVisible (! simple);
-    micCharDeHarshKnob.setVisible (! simple);
-    micCharSibilanceKnob.setVisible (! simple);
-    sourceMic.setVisible (false);
-    targetMic.setVisible (false);
-    correction.setVisible (false);
-    targetAmount.setVisible (false);
-    badFreq.setVisible (false);
+    // Grid spec shows AMOUNT / PROXIMITY / DE-HARSH always; legacy simple-mode extras stay hidden.
+    micCharInputTrimKnob.setVisible (false);
+    micCharSibilanceKnob.setVisible (false);
+    bodyKnob.setVisible (false);
+    presenceKnob.setVisible (false);
+    airKnob.setVisible (false);
+    micCharOutputKnob.setVisible (false);
 }
 
 void StadiumAuraAudioProcessorEditor::updateCompressorControlVisibility()
@@ -480,34 +579,13 @@ void StadiumAuraAudioProcessorEditor::applyRouteVisuals()
     };
 
     const auto route = focusedRoute;
-    setPanel (leftPanel, route == 0 || route == 1 || route == 4, route != 0 && route != 1 && route != 4);
-    setPanel (heroPanel, route == 3 || route == 5, route != 3 && route != 5);
-    setPanel (rightPanel, route == 2 || route == 6, route != 2 && route != 6);
-    setPanel (eqPanel, route == 5, route != 5);
+    setPanel (micSourcePanel, route == 0, route != 0);
+    setPanel (micCharPanel, route == 0, route != 0);
+    setPanel (preampPanel, route == 1, route != 1);
+    setPanel (bigAuraPanel, route == 3 || route == 5, route != 3 && route != 5);
+    setPanel (compressorPanel, route == 2, route != 2);
 
-    sourceMic.setVisible (false);
-    targetMic.setVisible (false);
-    correction.setVisible (false);
-    targetAmount.setVisible (false);
-    badFreq.setVisible (false);
-    hardwareSafe.setVisible (route == 0);
-    analyzeSource.setVisible (route == 0);
-    micCharProfile.setVisible (route == 0);
-    micCharBypass.setVisible (route == 0);
-    micCharSimpleMode.setVisible (route == 0);
-    bodyKnob.setVisible (route == 0);
-    presenceKnob.setVisible (route == 0);
-    airKnob.setVisible (route == 0);
-    micCharColorKnob.setVisible (route == 0);
-    micCharOutputKnob.setVisible (route == 0);
-    updateMicCharacterControlVisibility();
-    preampMode.setVisible (route == 0 || route == 1);
-    preampDrive.setVisible (route == 0 || route == 1);
-    threshold.setVisible (route == 2);
-    ratio.setVisible (route == 2);
-    bleed.setVisible (false);  // legacy bleed hidden; compInputKnob/compSidechainKnob take its row slot
-
-    const char* routeNames[] { "MIC", "PRE", "COMP", "HARM", "SUMMING", "MASTER", "OUTPUT" };
+    const char* routeNames[] { "MIC", "PRE", "COMP", "HARM", "SUM", "MASTER", "OUTPUT" };
     for (int i = 0; i < 6; ++i)
     {
         const auto enabled = isSectionEnabled (i);
@@ -522,232 +600,268 @@ void StadiumAuraAudioProcessorEditor::paint (juce::Graphics& g)
 {
     auto frame = getLocalBounds().toFloat().reduced (8.0f);
     RackDrawing::paintBrushedMetal (g, frame);
-    g.setColour (juce::Colour (0xff5a4224));
+    g.setColour (RackDrawing::Palette::accentGold().withAlpha (0.35f));
     g.drawRoundedRectangle (frame, 8.0f, 2.0f);
     RackDrawing::paintScrews (g, frame, 14.0f);
 
-    g.setColour (juce::Colour (0x18ffffff));
-    g.drawHorizontalLine (juce::roundToInt (frame.getY() + 88.0f), frame.getX() + 20.0f, frame.getRight() - 20.0f);
-    g.drawHorizontalLine (juce::roundToInt (frame.getBottom() - 168.0f), frame.getX() + 20.0f, frame.getRight() - 20.0f);
-    g.drawHorizontalLine (juce::roundToInt (frame.getBottom() - 72.0f), frame.getX() + 20.0f, frame.getRight() - 20.0f);
+    const float sx = static_cast<float> (getWidth()) / static_cast<float> (kDesignW);
+    const float sy = static_cast<float> (getHeight()) / static_cast<float> (kDesignH);
+    const auto drawDivider = [&] (int designY)
+    {
+        const float y = frame.getY() + static_cast<float> (designY) * sy;
+        g.setColour (juce::Colour (0x18ffffff));
+        g.drawHorizontalLine (juce::roundToInt (y), frame.getX() + 20.0f, frame.getRight() - 20.0f);
+    };
+    drawDivider (92);
+    drawDivider (675);
+    drawDivider (680);
+    drawDivider (852);
+    drawDivider (858);
 
-    auto footer = getLocalBounds().reduced (16, 10).removeFromBottom (58).toFloat();
+    const auto utility = designRect (sx, sy, 0, 858, kDesignW, 920).toFloat().reduced (2.0f);
     g.setColour (juce::Colour (0xff0d1013));
-    g.fillRoundedRectangle (footer.reduced (2.0f), 5.0f);
+    g.fillRoundedRectangle (utility, 5.0f);
     g.setColour (juce::Colour (0xff3a2f22));
-    g.drawRoundedRectangle (footer.reduced (2.0f), 5.0f, 1.0f);
+    g.drawRoundedRectangle (utility, 5.0f, 1.0f);
 }
 
 void StadiumAuraAudioProcessorEditor::resized()
 {
-    // HARD UI REBUILD PASS:
-    // Changes actual component bounds. DSP, parameter IDs, ranges, defaults, and routing are untouched.
-    constexpr int kOuterPad  = 10;
-    constexpr int kPanelPad  = 14;
-    constexpr int kPanelTop  = 32;
-    constexpr int kGap       = 8;
-    constexpr int kDropH     = 34;
-    constexpr int kButtonH   = 28;
-    auto area = getLocalBounds().reduced (kOuterPad);
-    auto header = area.removeFromTop (74);
-    const int mainH = juce::jlimit (360, 500, juce::roundToInt (area.getHeight() * 0.58f));
-    auto main = area.removeFromTop (mainH);
-    auto lowerModules = area.removeFromTop (juce::jlimit (84, 118, juce::roundToInt (area.getHeight() * 0.17f)));
-    auto eqStrip = area.removeFromTop (juce::jlimit (78, 96, juce::roundToInt (area.getHeight() * 0.18f)));
-    auto stadiumVuStrip = area.removeFromTop (juce::jlimit (88, 118, juce::roundToInt (area.getHeight() * 0.38f)));
-    auto bottom = area;
-    // HEADER
+    const float sx = static_cast<float> (getWidth()) / static_cast<float> (kDesignW);
+    const float sy = static_cast<float> (getHeight()) / static_cast<float> (kDesignH);
+    constexpr int kPanelPad = 10;
+    constexpr int kPanelTop = 28;
+    constexpr int kDropH = 30;
+    constexpr int kButtonH = 26;
+
+    // ── TOP HEADER y 0–92 ─────────────────────────────────────────────────────
+    logoTitle.setBounds       (designRect (sx, sy, 0, 0, 330, 52));
+    logoSubtitle.setBounds    (designRect (sx, sy, 0, 52, 330, 88));
+    favoriteBtn.setBounds     (designRect (sx, sy, 335, 28, 365, 68));
+    presetPrev.setBounds      (designRect (sx, sy, 370, 28, 400, 68));
+    presetNext.setBounds      (designRect (sx, sy, 405, 28, 435, 68));
+    presetCard.setBounds      (designRect (sx, sy, 440, 24, 590, 56));
+    saveBtn.setBounds         (designRect (sx, sy, 595, 28, 650, 68));
+    factoryPresetLabel.setBounds (designRect (sx, sy, 440, 58, 650, 82));
+    abA.setBounds             (designRect (sx, sy, 675, 710, 28, 68));
+    abB.setBounds             (designRect (sx, sy, 712, 740, 28, 68));
+    undoBtn.setBounds         (designRect (sx, sy, 745, 785, 28, 68));
+    routing[0].setBounds      (designRect (sx, sy, 792, 860, 28, 68));
+    routing[1].setBounds      (designRect (sx, sy, 865, 28, 935, 68));
+    routing[2].setBounds      (designRect (sx, sy, 940, 28, 1015, 68));
+    routing[3].setBounds      (designRect (sx, sy, 1020, 28, 1120, 68));
+    routing[4].setBounds      (designRect (sx, sy, 1125, 28, 1198, 68));
+    routing[5].setBounds      (designRect (sx, sy, 1203, 28, 1285, 68));
+    routing[6].setBounds      (designRect (sx, sy, 1290, 28, 1370, 68));
+    settingsBtn.setBounds     (designRect (sx, sy, 1380, 1420, 28, 68));
+    helpBtn.setBounds         (designRect (sx, sy, 1425, 1465, 28, 68));
+    saMarkLabel.setBounds     (designRect (sx, sy, 1490, 1536, 28, 68));
+    monitorLabel.setBounds    (designRect (sx, sy, 675, 1370, 68, 88));
+    presets.setVisible (false);
+
+    // ── MAIN CONSOLE y 100–675 — 7 columns ────────────────────────────────────
+    micSourcePanel.setBounds  (designRect (sx, sy, 0, 100, 230, 675));
+    micCharPanel.setBounds    (designRect (sx, sy, 317, 100, 458, 675));
+    preampPanel.setBounds     (designRect (sx, sy, 460, 100, 592, 675));
+    bigAuraPanel.setBounds    (designRect (sx, sy, 596, 100, 988, 675));
+    compressorPanel.setBounds (designRect (sx, sy, 992, 100, 1416, 675));
+    outputRms.setBounds       (designRect (sx, sy, 1418, 100, 1536, 675));
+
+    // Col 1 — MIC SOURCE
     {
-        const int logoW = (getWidth() < 1320) ? 190 : 235;
-        auto logo = header.removeFromLeft (logoW);
-        logoTitle.setBounds    (logo.removeFromTop (42).reduced (0, 2));
-        logoSubtitle.setBounds (logo.reduced (0, 2));
-        favoriteBtn.setBounds (header.removeFromLeft (30).reduced (3, 13));
-        presetPrev.setBounds  (header.removeFromLeft (30).reduced (3, 13));
-        presetNext.setBounds  (header.removeFromLeft (30).reduced (3, 13));
-        presetCard.setBounds  (header.removeFromLeft (210).reduced (6, 10));
-        saveBtn.setBounds     (header.removeFromLeft (52).reduced (4, 13));
-        abA.setBounds         (header.removeFromLeft (32).reduced (3, 13));
-        abB.setBounds         (header.removeFromLeft (32).reduced (3, 13));
-        header.removeFromLeft (22);
-        settingsBtn.setBounds  (header.removeFromRight (34).reduced (3, 13));
-        helpBtn.setBounds      (header.removeFromRight (34).reduced (3, 13));
-        monitorLabel.setBounds (header.removeFromRight (188).reduced (2, 13));
-        auto nav = header.reduced (2, 8);
-        const int navW = juce::jmax (72, nav.getWidth() / static_cast<int> (routing.size()));
-        for (auto& b : routing)
-            b.setBounds (nav.removeFromLeft (navW).reduced (3, 0));
+        auto col = micSourcePanel.getBounds().reduced (kPanelPad, kPanelTop);
+        sourceMic.setBounds (col.removeFromTop (kDropH));
+        col.removeFromTop (4);
+        targetMic.setBounds (col.removeFromTop (kDropH));
+        col.removeFromTop (6);
+        auto knobRow = col.removeFromTop (juce::jmin (col.getHeight() / 2, juce::roundToInt (110 * sy)));
+        layoutKnobRowInArea (knobRow, 2, { &correction, &targetAmount }, juce::roundToInt (72 * sy));
+        col.removeFromTop (4);
+        auto knobRow2 = col.removeFromTop (juce::jmin (col.getHeight() / 2, juce::roundToInt (110 * sy)));
+        layoutKnobRowInArea (knobRow2, 2, { &badFreq, &bodyProtectKnob }, juce::roundToInt (72 * sy));
+        col.removeFromTop (4);
+        layoutKnobInCell (col.removeFromTop (juce::jmin (col.getHeight() / 2, juce::roundToInt (96 * sy))),
+                          airProtectKnob, juce::roundToInt (68 * sy));
+        col.removeFromTop (4);
+        analyzeSource.setBounds (col.removeFromTop (kButtonH).reduced (2, 0));
+        col.removeFromTop (4);
+        hardwareSafe.setBounds (col.removeFromTop (kButtonH).reduced (2, 0));
     }
-    auto inMeter  = main.removeFromLeft (54);
-    auto outMeter = main.removeFromRight (54);
-    inputRms.setBounds  (inMeter.reduced (3, 6));
-    outputRms.setBounds (outMeter.reduced (3, 6));
-    auto left = main.removeFromLeft (juce::roundToInt (main.getWidth() * 0.34f));
-    auto center = main.removeFromLeft (juce::roundToInt (main.getWidth() * 0.39f));
-    auto right = main;
-    leftPanel.setBounds (left.reduced (2, 0));
-    heroPanel.setBounds (center.reduced (2, 0));
-    rightPanel.setBounds (right.reduced (2, 0));
-    // LEFT: MIC / PRE / CONSOLE
+
+    // Col 2 — INPUT meter + IN TRIM
     {
-        auto la = leftPanel.getBounds().reduced (kPanelPad, kPanelTop);
-        micCharProfile.setBounds (la.removeFromTop (kDropH));
-        la.removeFromTop (kGap);
-        auto buttonRow = la.removeFromTop (kButtonH);
-        micCharBypass.setBounds (buttonRow.removeFromLeft (buttonRow.getWidth() / 2).reduced (3, 0));
-        micCharSimpleMode.setBounds (buttonRow.reduced (3, 0));
-        la.removeFromTop (kGap);
-        preampMode.setBounds (la.removeFromTop (kDropH));
-        la.removeFromTop (kGap);
-        consoleMode.setBounds (la.removeFromTop (kDropH));
-        la.removeFromTop (kGap + 2);
-        sourceMic.setBounds ({});
-        targetMic.setBounds ({});
-        correction.setBounds ({});
-        targetAmount.setBounds ({});
-        badFreq.setBounds ({});
-        const bool simpleMic = processorRef.apvts.getRawParameterValue ("MIC_CHAR_SIMPLE_MODE")->load() > 0.5f;
-        const int gridRows = simpleMic ? 2 : 3;
-        const int availableForKnobs = juce::jmax (140, la.getHeight() - (kButtonH * 2 + kGap * 3));
-        const int knobCellH = juce::jlimit (82, 112, availableForKnobs / gridRows);
-        auto grid = la.removeFromTop (knobCellH * gridRows);
-        if (simpleMic)
-            layoutKnobGrid (grid, 2, { &bodyKnob, &presenceKnob, &airKnob, &micCharColorKnob });
-        else
-            layoutKnobGrid (grid, 2, { &bodyKnob, &presenceKnob, &airKnob, &micCharColorKnob,
-                                       &micCharOutputKnob, &micCharInputTrimKnob });
-        micCharProximityKnob.setBounds ({});
-        micCharDeHarshKnob.setBounds ({});
-        micCharSibilanceKnob.setBounds ({});
-        la.removeFromTop (kGap);
-        auto driveRow = la.removeFromTop (juce::jlimit (84, 104, la.getHeight() / 2));
-        preampDrive.setBounds (driveRow.withSizeKeepingCentre (92, 92));
-        la.removeFromTop (kGap);
-        analyzeSource.setBounds (la.removeFromTop (kButtonH).reduced (3, 0));
-        la.removeFromTop (kGap);
-        hardwareSafe.setBounds (la.removeFromTop (kButtonH).reduced (3, 0));
+        auto meterBounds = designRect (sx, sy, 232, 100, 315, 675).reduced (4, 8);
+        auto trimArea = meterBounds.removeFromBottom (juce::roundToInt (100 * sy));
+        layoutKnobInCell (trimArea, micCharInputTrimKnob, juce::roundToInt (64 * sy));
+        inputRms.setBounds (meterBounds);
     }
-    // CENTER: AURA BIG HERO
+
+    // Col 3 — MIC CHARACTER
     {
-        auto ha = heroPanel.getBounds().reduced (kPanelPad, kPanelTop);
-        auto tubeCol = ha.removeFromRight (156);
-        tubeDriveKnob.setBounds (tubeCol.removeFromTop (102).withSizeKeepingCentre (86, 86));
-        tubeBias.setBounds      (tubeCol.removeFromTop (90).withSizeKeepingCentre (76, 76));
-        tubeType.setBounds      (tubeCol.removeFromTop (kDropH).reduced (4, 0));
-        tubeCol.removeFromTop (kGap);
-        tubeChamber.setBounds   (tubeCol.reduced (4, 4));
-        auto bottomTrack = ha.removeFromBottom (30);
-        trackButtons.setBounds (bottomTrack.withSizeKeepingCentre (juce::jmin (260, bottomTrack.getWidth()), 28));
-        auto stageRow = ha.removeFromBottom (32);
-        const int ledSlotW = juce::jmax (34, stageRow.getWidth() / static_cast<int> (auraBigStageLeds.size()));
+        auto col = micCharPanel.getBounds().reduced (kPanelPad, kPanelTop);
+        micCharProfile.setBounds (col.removeFromTop (kDropH));
+        col.removeFromTop (6);
+        auto knobs = col.removeFromTop (juce::jmax (120, col.getHeight() - kButtonH - 8));
+        layoutKnobRowInArea (knobs, 1, { &micCharAmountKnob, &micCharProximityKnob, &micCharDeHarshKnob },
+                             juce::roundToInt (68 * sy));
+        micCharHpfBtn.setBounds (col.removeFromTop (kButtonH).reduced (2, 0));
+        micCharBypass.setVisible (false);
+        micCharSimpleMode.setVisible (false);
+    }
+
+    // Col 4 — PREAMP
+    {
+        auto col = preampPanel.getBounds().reduced (kPanelPad, kPanelTop);
+        preampMode.setBounds (col.removeFromTop (kDropH));
+        col.removeFromTop (6);
+        auto knobs = col.removeFromTop (juce::jmax (130, col.getHeight() - kButtonH - 8));
+        layoutKnobRowInArea (knobs, 1, { &preampDrive, &preampToneKnob, &preampOutputKnob }, juce::roundToInt (68 * sy));
+        preampPolarityBtn.setBounds (col.removeFromTop (kButtonH).reduced (2, 0));
+    }
+
+    // Col 5 — BIG AURA
+    {
+        auto col = bigAuraPanel.getBounds().reduced (kPanelPad, kPanelTop);
+        auto rightStrip = col.removeFromRight (juce::roundToInt (88 * sx));
+        bigAuraSubtitle.setBounds (col.removeFromTop (juce::roundToInt (18 * sy)));
+        col.removeFromTop (4);
+
+        auto sweetRow = col.removeFromBottom (juce::roundToInt (24 * sy));
+        sweetLow.setBounds  (sweetRow.removeFromLeft (sweetRow.getWidth() / 3).reduced (2, 0));
+        sweetZone.setBounds (sweetRow.removeFromLeft (sweetRow.getWidth() / 2).reduced (2, 0));
+        sweetHot.setBounds  (sweetRow.reduced (2, 0));
+
+        auto trackRow = col.removeFromBottom (juce::roundToInt (30 * sy));
+        trackButtons.setBounds ({});
+        juce::ignoreUnused (trackRow);
+
+        tubeChamber.setBounds (col.reduced (2, 2));
+        tubeChamber.toBack();
+
+        const int auraKnobPx = juce::jlimit (180, 205, juce::roundToInt (192.0f * juce::jmin (sx, sy)));
+        const int labelValueH = 38;
+        auto auraArea = col.withSizeKeepingCentre (auraKnobPx, auraKnobPx + labelValueH);
+        auraHeatRing.setBounds (auraArea.expanded (juce::roundToInt (10 * sx)));
+        aura.setBounds (auraArea);
+        aura.toFront (false);
+        auraHeatRing.toBack();
+
+        layoutKnobInCell (rightStrip.removeFromTop (juce::roundToInt (120 * sy)), tubeDriveKnob, juce::roundToInt (62 * sy));
+        layoutKnobInCell (rightStrip.removeFromTop (juce::roundToInt (100 * sy)), tubeBias, juce::roundToInt (56 * sy));
+        tubeType.setBounds (rightStrip.removeFromTop (kDropH).reduced (0, 2));
+
         for (auto& led : auraBigStageLeds)
-            led.setBounds (stageRow.removeFromLeft (ledSlotW).reduced (2, 2));
-        auto sweetRow = ha.removeFromBottom (30);
-        sweetLow.setBounds  (sweetRow.removeFromLeft (sweetRow.getWidth() / 3).reduced (2, 3));
-        sweetZone.setBounds (sweetRow.removeFromLeft (sweetRow.getWidth() / 2).reduced (2, 3));
-        sweetHot.setBounds  (sweetRow.reduced (2, 3));
-        auraBigLabel.setBounds (ha.removeFromTop (30).reduced (0, 0));
-        const int auraSize = juce::jlimit (210, 280, juce::jmin (ha.getWidth() - 12, ha.getHeight() - 6));
-        auto auraRect = ha.withSizeKeepingCentre (auraSize, auraSize);
-        auraHeatRing.setBounds (auraRect.expanded (12));
-        aura.setBounds (auraRect.reduced (4));
+            led.setBounds ({});
     }
-    // RIGHT: COMPRESSOR
+
+    // Col 6 — COMPRESSOR
     {
-        auto ra = rightPanel.getBounds().reduced (kPanelPad, kPanelTop);
-        auto topRow = ra.removeFromTop (kDropH);
-        compModelBar.setBounds (topRow.removeFromLeft (topRow.getWidth() / 2).reduced (3, 0));
-        compProfileBar.setBounds (topRow.reduced (3, 0));
-        ra.removeFromTop (kGap);
-        auto statusRow = ra.removeFromTop (kButtonH);
-        compressorEnable.setBounds (statusRow.removeFromRight (86).reduced (3, 0));
-        compBypassBtn.setBounds (statusRow.removeFromRight (86).reduced (3, 0));
-        auraLevelBtn.setBounds (statusRow.removeFromRight (112).reduced (3, 0));
-        emotionLockBtn.setBounds (statusRow.removeFromRight (124).reduced (3, 0));
-        emotionLockStatusLabel.setBounds ({});
-        auraLevelStateLabel.setBounds ({});
-        ra.removeFromTop (kGap);
-        const int vuH = juce::jlimit (104, 158, ra.getHeight() / 3);
-        vuMeter.setBounds (ra.removeFromTop (vuH).reduced (20, 4));
-        vuMode.setBounds ({});
-        compModeButtons.setBounds ({});
-        compGrMeter.setBounds ({});
-        compTargetGrLabel.setBounds ({});
-        grMeter.setBounds ({});
-        bleed.setBounds ({});
+        auto col = compressorPanel.getBounds().reduced (kPanelPad, kPanelTop);
+        auto modeRow = col.removeFromTop (kDropH);
+        compModelBar.setBounds (modeRow.removeFromLeft (modeRow.getWidth() / 2).reduced (2, 0));
+        compProfileBar.setBounds (modeRow.reduced (2, 0));
+        col.removeFromTop (4);
+
+        compGrMeter.setBounds (col.removeFromTop (juce::roundToInt (22 * sy)).reduced (2, 0));
+        vuMeter.setBounds (col.removeFromTop (juce::roundToInt (88 * sy)).reduced (8, 2));
+        vuModeBar.setBounds (col.removeFromTop (juce::roundToInt (26 * sy)).reduced (2, 0));
+        col.removeFromTop (4);
+
         updateCompressorControlVisibility();
-        const int gridH = ra.getHeight();
-        const int rowH = juce::jlimit (82, 104, gridH / 3);
-        auto row1 = ra.removeFromTop (rowH);
-        layoutKnobGrid (row1, 4, { &threshold, &ratio, &attack, &release });
-        ra.removeFromTop (kGap);
-        auto row2 = ra.removeFromTop (rowH);
-        layoutKnobGrid (row2, 4, { &compInputKnob, &compDriveKnob, &compMixKnob, &compOutputKnob });
-        auto row3 = ra.removeFromTop (juce::jmin (rowH, ra.getHeight()));
-        layoutKnobGrid (row3, 3, { &compAmount, &compSidechainKnob, &compWarmthKnob });
+        auto knobArea = col.removeFromTop (juce::jmax (140, col.getHeight() - kButtonH * 2 - 8));
+        const int knobPx = juce::roundToInt (58 * sy);
+        auto row1 = knobArea.removeFromTop (knobArea.getHeight() / 2);
+        layoutKnobRowInArea (row1, 4, { &threshold, &ratio, &attack, &release }, knobPx);
+        knobArea.removeFromTop (2);
+        layoutKnobRowInArea (knobArea, 4,
+                             { &compInputKnob, &compOutputKnob, &bleed, &compSidechainKnob }, knobPx);
+
+        auto statusRow = col.removeFromTop (kButtonH);
+        compressorEnable.setBounds (statusRow.removeFromRight (juce::roundToInt (72 * sx)).reduced (2, 0));
+        compBypassBtn.setBounds ({});
+        emotionLockBtn.setBounds ({});
+        auraLevelBtn.setBounds ({});
+        compTimingMode.setBounds (col.removeFromTop (kButtonH).reduced (2, 0));
+        compScHpfMode.setBounds (col.removeFromTop (kButtonH).reduced (2, 0));
+
+        compAmount.setBounds ({});
+        compDriveKnob.setBounds ({});
+        compMixKnob.setBounds ({});
         compDensityKnob.setBounds ({});
-        compTimingMode.setBounds ({});
-        compScHpfMode.setBounds ({});
-        outputKnob.setBounds ({});
-    }
-    // LOWER MODULES: analog color / console / limiter controls
-    {
-        auto la = lowerModules.reduced (2, 4);
-        const int satW = 120;
-        auto satBlock = la.removeFromLeft (satW);
-        saturation.setBounds (satBlock.withSizeKeepingCentre (82, 82));
-        auto transformerBlock = la.removeFromLeft (150);
-        transformer.setBounds (transformerBlock.withSizeKeepingCentre (88, 88));
-        auto consoleBlock = la.removeFromLeft (230).reduced (4, 0);
-        consoleMode.setBounds (consoleBlock.removeFromTop (kDropH));
-        consoleBlock.removeFromTop (kGap);
-        auto consoleKnobs = consoleBlock;
-        layoutKnobGrid (consoleKnobs, 2, { &summing, &glue });
-        auto busBlock = la.removeFromLeft (128);
-        mix.setBounds (busBlock.withSizeKeepingCentre (88, 88));
-        auto rightTools = la.removeFromRight (260);
-        limiter.setBounds (rightTools.removeFromTop (kButtonH).reduced (4, 0));
-        auto limKnobs = rightTools;
-        layoutKnobGrid (limKnobs, 2, { &width, &ceiling });
-        eqPanel.setBounds (la.reduced (4, 0));
-    }
-    // COMPACT EQ: simple preview only. Full 24-band view belongs in expanded EQ.
-    {
-        auto ea = eqPanel.getBounds().reduced (kPanelPad, 28);
-        eqDisplay.setBounds (ea.reduced (4, 0));
-        if (eqDisplay.isExpanded())
-            eqDisplay.setBounds (getLocalBounds().reduced (80, 60));
-        limMeter.setBounds ({});
-    }
-    // ONE BIG STADIUM VU AREA: hide three weak meter strips.
-    {
-        auto ma = stadiumVuStrip.reduced (10, 5);
+        compWarmthKnob.setBounds ({});
+        compModeButtons.setBounds ({});
+        vuMode.setBounds ({});
+        compTargetGrLabel.setBounds ({});
         inputVuMeter.setBounds ({});
         grHorizontalMeter.setBounds ({});
         outputVuMeter.setBounds ({});
-        qualityBar.setBounds (ma.removeFromBottom (28).reduced (60, 2));
-        vuMeter.setBounds (ma.reduced (160, 2));
+        grMeter.setBounds ({});
+        outputKnob.setBounds ({});
     }
-    // BOTTOM UTILITY STRIP
+
+    // ── BOTTOM STRIP y 680–852 ────────────────────────────────────────────────
+    layoutKnobInCell (designRect (sx, sy, 0, 143, 680, 852).reduced (6, 12), saturation, juce::roundToInt (78 * sy));
+    layoutKnobInCell (designRect (sx, sy, 145, 282, 680, 852).reduced (6, 12), transformer, juce::roundToInt (78 * sy));
+
     {
-        auto fa = bottom.reduced (2, 4);
-        inputFader.setBounds (fa.removeFromLeft (126).reduced (5, 2));
-        inputLrMeter.setBounds (fa.removeFromLeft (58).reduced (4, 2));
-        mono.setBounds (fa.removeFromLeft (62).reduced (5, 8));
-        bypass.setBounds (fa.removeFromLeft (78).reduced (5, 8));
-        dim.setBounds (fa.removeFromLeft (62).reduced (5, 8));
-        presets.setBounds (fa.removeFromLeft (juce::jlimit (220, 360, fa.getWidth() / 3)).reduced (8, 10));
-        undoBtn.setBounds (fa.removeFromLeft (50).reduced (5, 12));
-        redoBtn.setBounds (fa.removeFromLeft (50).reduced (5, 12));
-        outputFader.setBounds (fa.removeFromRight (126).reduced (5, 2));
-        outputLrMeter.setBounds (fa.removeFromRight (58).reduced (4, 2));
-        oversamplingLabel.setBounds (fa.removeFromRight (132).reduced (3, 12));
-        latencyLabel.setBounds (fa.removeFromRight (124).reduced (3, 12));
+        auto consoleArea = designRect (sx, sy, 284, 488, 680, 852).reduced (8, 12);
+        consoleMode.setBounds (consoleArea.removeFromTop (kDropH));
+        consoleArea.removeFromTop (4);
+        layoutKnobInCell (consoleArea, summing, juce::roundToInt (72 * sy));
     }
+
+    mix.setBounds ({});
+
+    layoutKnobInCell (designRect (sx, sy, 490, 595, 680, 852).reduced (6, 12), glue, juce::roundToInt (72 * sy));
+    eqDisplay.setBounds (designRect (sx, sy, 598, 1068, 680, 852).reduced (4, 8));
+
+    {
+        auto widthArea = designRect (sx, sy, 1070, 1202, 680, 852).reduced (6, 12);
+        layoutKnobInCell (widthArea, width, juce::roundToInt (64 * sy));
+    }
+
+    {
+        auto limArea = designRect (sx, sy, 1204, 1378, 680, 852).reduced (8, 12);
+        limiter.setBounds (limArea.removeFromTop (kButtonH).reduced (2, 0));
+        limArea.removeFromTop (4);
+        layoutKnobInCell (limArea, ceiling, juce::roundToInt (68 * sy));
+    }
+
+    {
+        auto detail = designRect (sx, sy, 1380, 1536, 680, 852).reduced (6, 10);
+        limMeter.setBounds (detail.removeFromTop (detail.getHeight() / 2).reduced (2, 2));
+        grMeter.setBounds (detail.reduced (2, 2));
+    }
+
+    qualityBar.setBounds ({});
+    eqEnableBtn.setBounds ({});
+    inputKnob.setBounds ({});
+    inputLrMeter.setBounds ({});
+    outputLrMeter.setBounds (designRect (sx, sy, 1280, 1340, 864, 916).reduced (4, 4));
+
+    // ── UTILITY BAR y 858–920 ─────────────────────────────────────────────────
+    inputFader.setBounds  (designRect (sx, sy, 12, 138, 858, 916).reduced (4, 2));
+    bypass.setBounds      (designRect (sx, sy, 150, 228, 862, 914).reduced (4, 6));
+    mono.setBounds        (designRect (sx, sy, 234, 296, 862, 914).reduced (4, 6));
+    dim.setBounds         (designRect (sx, sy, 302, 364, 862, 914).reduced (4, 6));
+    presetCard.setBounds  (designRect (sx, sy, 380, 720, 864, 896));
+    factoryPresetLabel.setBounds (designRect (sx, sy, 380, 720, 896, 914));
+    redoBtn.setBounds     (designRect (sx, sy, 796, 856, 866, 912));
+    latencyLabel.setBounds (designRect (sx, sy, 870, 990, 866, 912));
+    oversamplingLabel.setBounds (designRect (sx, sy, 996, 1120, 866, 912));
+    outputFader.setBounds (designRect (sx, sy, 1398, 1524, 862, 916).reduced (4, 2));
+
     eqDisplay.toFront (false);
+
+    if (eqModalBackdrop != nullptr && eqModalBackdrop->isVisible())
+    {
+        eqModalBackdrop->setBounds (getLocalBounds());
+        eqModalBackdrop->toBack();
+    }
+
     if (expandedEQPanel != nullptr && expandedEQPanel->isVisible())
     {
-        expandedEQPanel->setBounds (getLocalBounds().reduced (18, 14));
+        expandedEQPanel->setBounds (designRect (sx, sy, 10, 1526, 10, 910));
         expandedEQPanel->toFront (false);
     }
 }
@@ -788,6 +902,7 @@ void StadiumAuraAudioProcessorEditor::timerCallback()
 
     const auto vuIndex = juce::jlimit (0, 2, static_cast<int> (processorRef.apvts.getRawParameterValue ("vuMeterMode")->load()));
     vuMeter.setTargets (in, gr, out, static_cast<VuMeterComponent::Mode> (vuIndex));
+    vuModeBar.setSelectedIndex (vuIndex, juce::dontSendNotification);
 
     const auto tubeLevel = processorRef.tubeActivityMeter.load (std::memory_order_relaxed);
     const auto drive = processorRef.apvts.getRawParameterValue ("tubeDrive")->load();
@@ -855,6 +970,8 @@ void StadiumAuraAudioProcessorEditor::timerCallback()
     grHorizontalMeter.setSaturation (juce::jlimit (0.0f, 1.0f, tubeLevel));
 
     updateEqDisplayState();
+    if (auto* eqOn = processorRef.apvts.getRawParameterValue ("eqEnable"))
+        eqDisplay.setEqBypassed (eqOn->load() <= 0.5f);
 
     // Refresh the expanded EQ panel when visible (30 Hz is sufficient for visual)
     if (expandedEQPanel != nullptr && expandedEQPanel->isVisible())

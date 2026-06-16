@@ -109,28 +109,17 @@ ExpandedEQPanel::ExpandedEQPanel (StadiumAuraAudioProcessor& proc)
 {
     // ── Title ────────────────────────────────────────────────────────────────
     titleLabel.setText ("AURA EQ", juce::dontSendNotification);
-    titleLabel.setFont (juce::FontOptions (16.0f, juce::Font::bold));
-    titleLabel.setColour (juce::Label::textColourId, juce::Colour (0xffffd451));
+    titleLabel.setFont (juce::FontOptions (38.0f, juce::Font::bold).withKerningFactor (0.14f));
+    titleLabel.setColour (juce::Label::textColourId, juce::Colour (0xffFFC24A));
     titleLabel.setJustificationType (juce::Justification::centredLeft);
     addAndMakeVisible (titleLabel);
 
-    // ── Bypass button ────────────────────────────────────────────────────────
-    bypassButton.setClickingTogglesState (true);
-    bypassButton.setColour (juce::TextButton::buttonOnColourId,  juce::Colour (0xff3a6030));
-    bypassButton.setColour (juce::TextButton::buttonColourId,    juce::Colour (0xff1a1a24));
-    bypassButton.setColour (juce::TextButton::textColourOnId,    juce::Colour (0xff70ff80));
-    bypassButton.setColour (juce::TextButton::textColourOffId,   juce::Colour (0xffb0a090));
-    bypassButton.setTooltip ("EQ Power / Bypass");
-    addAndMakeVisible (bypassButton);
-
-    // Attach to EQ_GLOBAL_BYPASS parameter if it exists
-    if (proc.apvts.getParameter ("EQ_GLOBAL_BYPASS") != nullptr)
-    {
-        bypassAttachment = std::make_unique<ButtonAttach> (proc.apvts, "EQ_GLOBAL_BYPASS", bypassButton);
-        bypassButton.setToggleState (
-            proc.apvts.getRawParameterValue ("EQ_GLOBAL_BYPASS")->load() > 0.5f,
-            juce::dontSendNotification);
-    }
+    // ── EQ ON toggle ─────────────────────────────────────────────────────────
+    eqOnButton.setClickingTogglesState (true);
+    eqOnButton.setTooltip ("Enable or disable the Aura EQ processing chain.");
+    addAndMakeVisible (eqOnButton);
+    if (proc.apvts.getParameter ("eqEnable") != nullptr)
+        eqEnableAttachment = std::make_unique<ButtonAttach> (proc.apvts, "eqEnable", eqOnButton);
 
     // ── Stereo mode dropdown ──────────────────────────────────────────────────
     stereoModeBox.addItemList ({ "Stereo", "Mid", "Side", "Left", "Right" }, 1);
@@ -138,6 +127,7 @@ ExpandedEQPanel::ExpandedEQPanel (StadiumAuraAudioProcessor& proc)
     stereoModeBox.setColour (juce::ComboBox::backgroundColourId, juce::Colour (0xff1a1a28));
     stereoModeBox.setColour (juce::ComboBox::textColourId,       juce::Colour (0xffb0a080));
     addAndMakeVisible (stereoModeBox);
+    stereoModeBox.setTooltip ("Global EQ stereo view — TODO: bind when EQ stereo-mode param exists.");
 
     // ── Analyzer mode dropdown ────────────────────────────────────────────────
     analyzerModeBox.addItemList ({ "Pre EQ", "Post EQ", "Off" }, 1);
@@ -145,6 +135,7 @@ ExpandedEQPanel::ExpandedEQPanel (StadiumAuraAudioProcessor& proc)
     analyzerModeBox.setColour (juce::ComboBox::backgroundColourId, juce::Colour (0xff1a1a28));
     analyzerModeBox.setColour (juce::ComboBox::textColourId,       juce::Colour (0xffb0a080));
     addAndMakeVisible (analyzerModeBox);
+    analyzerModeBox.setTooltip ("Analyzer tap point — TODO: bind when EQ analyzer-mode param exists.");
 
     // ── Scale dropdown ────────────────────────────────────────────────────────
     scaleBox.addItemList ({ juce::CharPointer_UTF8 ("\xc2\xb1" "3 dB"),
@@ -177,15 +168,39 @@ ExpandedEQPanel::ExpandedEQPanel (StadiumAuraAudioProcessor& proc)
     // ── Close button ──────────────────────────────────────────────────────────
     closeButton.setColour (juce::TextButton::buttonColourId,  juce::Colour (0xff1a1a24));
     closeButton.setColour (juce::TextButton::textColourOffId, juce::Colour (0xffa0a0a0));
-    closeButton.setTooltip ("Close expanded EQ");
+    closeButton.setTooltip ("Close expanded EQ (Esc)");
     closeButton.onClick = [this]
     {
         if (onClose) onClose();
     };
     addAndMakeVisible (closeButton);
 
+    // ── Left strip — selected band controls ───────────────────────────────────
+    selectedBandLabel.setFont (juce::FontOptions (10.0f, juce::Font::bold));
+    selectedBandLabel.setColour (juce::Label::textColourId, juce::Colour (0xffFFC24A));
+    selectedBandLabel.setJustificationType (juce::Justification::centred);
+    addAndMakeVisible (selectedBandLabel);
+
+    for (auto* knob : { &bandFreqKnob, &bandGainKnob, &bandQKnob })
+    {
+        knob->setSizeTier (PremiumKnob::SizeTier::Small);
+        addAndMakeVisible (*knob);
+    }
+
+    bandTypeBox.addItemList ({ "Bell", "Low Cut", "High Cut", "Low Shelf", "High Shelf", "Notch", "Tilt" }, 1);
+    bandTypeBox.setColour (juce::ComboBox::backgroundColourId, juce::Colour (0xff1a1a28));
+    bandTypeBox.setColour (juce::ComboBox::textColourId, juce::Colour (0xffb0a080));
+    addAndMakeVisible (bandTypeBox);
+
+    bandEnableBtn.setClickingTogglesState (true);
+    addAndMakeVisible (bandEnableBtn);
+
+    addAndMakeVisible (inputMeter);
+    addAndMakeVisible (outputMeter);
+
     // ── EQ graph ─────────────────────────────────────────────────────────────
     eqGraph.bindToParameters (proc.apvts);
+    eqGraph.setCompactMode (false);
     addAndMakeVisible (eqGraph);
 
     // ── Band cards ────────────────────────────────────────────────────────────
@@ -229,10 +244,24 @@ ExpandedEQPanel::ExpandedEQPanel (StadiumAuraAudioProcessor& proc)
     };
     cardsContainer.addAndMakeVisible (addBandButton);
 
-    setOpaque (false);
+    selectBand (0);
+    rebuildBandControlAttachments();
+
+    setInterceptsMouseClicks (true, true);
+    setWantsKeyboardFocus (true);
 }
 
 ExpandedEQPanel::~ExpandedEQPanel() = default;
+
+bool ExpandedEQPanel::keyPressed (const juce::KeyPress& key)
+{
+    if (key == juce::KeyPress::escapeKey)
+    {
+        if (onClose) onClose();
+        return true;
+    }
+    return Component::keyPressed (key);
+}
 
 //==============================================================================
 juce::Rectangle<int> ExpandedEQPanel::getHeaderArea() const
@@ -240,12 +269,31 @@ juce::Rectangle<int> ExpandedEQPanel::getHeaderArea() const
     return getLocalBounds().reduced (kOuterPad).removeFromTop (kHeaderH);
 }
 
-juce::Rectangle<int> ExpandedEQPanel::getGraphArea() const
+juce::Rectangle<int> ExpandedEQPanel::getContentArea() const
 {
     auto b = getLocalBounds().reduced (kOuterPad);
     b.removeFromTop (kHeaderH);
     b.removeFromBottom (kCardsH);
     return b;
+}
+
+juce::Rectangle<int> ExpandedEQPanel::getLeftStripArea() const
+{
+    return getContentArea().removeFromLeft (kLeftStripW);
+}
+
+juce::Rectangle<int> ExpandedEQPanel::getRightStripArea() const
+{
+    auto b = getContentArea();
+    return b.removeFromRight (kRightStripW);
+}
+
+juce::Rectangle<int> ExpandedEQPanel::getGraphArea() const
+{
+    auto b = getContentArea();
+    b.removeFromLeft (kLeftStripW);
+    b.removeFromRight (kRightStripW);
+    return b.reduced (4, 2);
 }
 
 juce::Rectangle<int> ExpandedEQPanel::getCardsArea() const
@@ -277,22 +325,53 @@ void ExpandedEQPanel::paint (juce::Graphics& g)
     // Header title section highlight
     g.setColour (juce::Colour (0x15ffd451));
     g.fillRect (header.removeFromLeft (120.0f));
+
+    auto drawStrip = [&] (juce::Rectangle<int> strip)
+    {
+        if (strip.isEmpty()) return;
+        auto sf = strip.toFloat().reduced (2.0f);
+        g.setColour (juce::Colour (0xff0d1014));
+        g.fillRoundedRectangle (sf, 6.0f);
+        g.setColour (juce::Colour (0x33FFC24A));
+        g.drawRoundedRectangle (sf, 6.0f, 1.0f);
+    };
+    drawStrip (getLeftStripArea());
+    drawStrip (getRightStripArea());
 }
 
 void ExpandedEQPanel::resized()
 {
-    // ── EQ graph ─────────────────────────────────────────────────────────────
     eqGraph.setBounds (getGraphArea());
+
+    auto left = getLeftStripArea().reduced (6, 8);
+    selectedBandLabel.setBounds (left.removeFromTop (18));
+    left.removeFromTop (4);
+
+    const int knobH = juce::jmax (52, (left.getHeight() - 52) / 3);
+    for (auto* knob : { &bandFreqKnob, &bandGainKnob, &bandQKnob })
+    {
+        knob->setBounds (left.removeFromTop (knobH).reduced (0, 2));
+        left.removeFromTop (2);
+    }
+    bandTypeBox.setBounds (left.removeFromTop (24).reduced (0, 2));
+    left.removeFromTop (4);
+    bandEnableBtn.setBounds (left.removeFromTop (24).reduced (0, 2));
+
+    auto right = getRightStripArea().reduced (4, 8);
+    const int meterH = right.getHeight() / 2;
+    inputMeter.setBounds (right.removeFromTop (meterH).reduced (0, 2));
+    right.removeFromTop (4);
+    outputMeter.setBounds (right.reduced (0, 2));
 
     // ── Header layout ─────────────────────────────────────────────────────────
     auto hl = getHeaderArea().reduced (8, 4);
 
-    titleLabel.setBounds   (hl.removeFromLeft (90));
+    titleLabel.setBounds   (hl.removeFromLeft (160));
     hl.removeFromLeft (4);
-    bypassButton.setBounds (hl.removeFromLeft (38).reduced (2));
+    eqOnButton.setBounds (hl.removeFromLeft (64).reduced (2));
     hl.removeFromLeft (8);
 
-    closeButton.setBounds     (hl.removeFromRight (30).reduced (2));
+    closeButton.setBounds     (hl.removeFromRight (36).reduced (2));
     hl.removeFromRight (6);
     auraTraceButton.setBounds (hl.removeFromRight (58).reduced (2));
     hl.removeFromRight (6);
@@ -347,13 +426,35 @@ void ExpandedEQPanel::refreshFromParameters()
     }
 
     // Check bypass state for visual dimming
-    if (auto* p = processorRef.apvts.getRawParameterValue ("EQ_GLOBAL_BYPASS"))
-    {
-        bypassed = p->load() > 0.5f;
-        eqGraph.setAlpha (bypassed ? 0.55f : 1.0f);
-    }
+    bypassed = true;
+    if (auto* p = processorRef.apvts.getRawParameterValue ("eqEnable"))
+        bypassed = p->load() <= 0.5f;
+    eqGraph.setEqBypassed (bypassed);
+    eqGraph.setAlpha (bypassed ? 0.55f : 1.0f);
+
+    inputMeter.setTarget (processorRef.inputMeter.load (std::memory_order_relaxed));
+    outputMeter.setTarget (processorRef.outputMeter.load (std::memory_order_relaxed));
 
     updateBandCards();
+}
+
+void ExpandedEQPanel::rebuildBandControlAttachments()
+{
+    bandSliderAttachments.clear();
+    bandEnableAttachment.reset();
+    bandTypeAttachment.reset();
+
+    if (! juce::isPositiveAndBelow (selectedBandIdx, 24))
+        return;
+
+    const auto pfx = "EQ_BAND_" + juce::String (selectedBandIdx + 1).paddedLeft ('0', 2) + "_";
+    selectedBandLabel.setText ("BAND " + juce::String (selectedBandIdx + 1), juce::dontSendNotification);
+
+    bandSliderAttachments.push_back (std::make_unique<SliderAttach> (processorRef.apvts, pfx + "FREQ", bandFreqKnob));
+    bandSliderAttachments.push_back (std::make_unique<SliderAttach> (processorRef.apvts, pfx + "GAIN", bandGainKnob));
+    bandSliderAttachments.push_back (std::make_unique<SliderAttach> (processorRef.apvts, pfx + "Q", bandQKnob));
+    bandEnableAttachment = std::make_unique<ButtonAttach> (processorRef.apvts, pfx + "ENABLED", bandEnableBtn);
+    bandTypeAttachment   = std::make_unique<ComboAttach>  (processorRef.apvts, pfx + "TYPE", bandTypeBox);
 }
 
 void ExpandedEQPanel::updateBandCards()
@@ -367,8 +468,9 @@ void ExpandedEQPanel::updateBandCards()
 
 void ExpandedEQPanel::selectBand (int idx)
 {
-    selectedBandIdx = idx;
-    eqGraph.selectBandExternally (idx);
+    selectedBandIdx = juce::jlimit (0, 23, idx);
+    rebuildBandControlAttachments();
+    eqGraph.selectBandExternally (selectedBandIdx);
 
     // Scroll band card into view
     if (juce::isPositiveAndBelow (idx, 24))

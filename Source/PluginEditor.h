@@ -17,8 +17,18 @@ public:
     ~StadiumAuraAudioProcessorEditor() override;
     void paint (juce::Graphics&) override;
     void resized() override;
+    bool keyPressed (const juce::KeyPress& key) override;
 
 private:
+    class EqModalBackdrop final : public juce::Component
+    {
+    public:
+        void paint (juce::Graphics& g) override
+        {
+            g.fillAll (juce::Colour (0xcc06080a));
+        }
+        void mouseDown (const juce::MouseEvent&) override {}
+    };
     using SliderAttachment = juce::AudioProcessorValueTreeState::SliderAttachment;
     using ButtonAttachment = juce::AudioProcessorValueTreeState::ButtonAttachment;
     using ComboAttachment = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
@@ -42,18 +52,22 @@ private:
     void updateCompressorControlVisibility();
     void layoutKnobRow (juce::Rectangle<int>& area, std::initializer_list<juce::Slider*> knobs);
     void layoutKnobGrid (juce::Rectangle<int>& area, int columns, std::initializer_list<juce::Slider*> knobs);
+    void openExpandedEq();
+    void closeExpandedEq();
+    int scaledKnobSize (int minPx, int maxPx, float scale) const noexcept;
 
     StadiumAuraAudioProcessor& processorRef;
     PremiumLookAndFeel lookAndFeel;
     juce::TooltipWindow tooltipWindow { this, 350 };
 
-    RackModulePanel leftPanel { "MIC / PRE / CONSOLE" };
-    RackModulePanel heroPanel { "AURA BIG" };
-    RackModulePanel rightPanel { "COMPRESSOR / OUTPUT" };
-    RackModulePanel eqPanel { "EQ / TONE" };
+    RackModulePanel micSourcePanel { "MIC SOURCE" };
+    RackModulePanel micCharPanel { "MIC CHARACTER" };
+    RackModulePanel preampPanel { "PREAMP" };
+    RackModulePanel bigAuraPanel { "BIG AURA" };
+    RackModulePanel compressorPanel { "COMPRESSOR" };
 
     std::array<NavRouteButton, 7> routing {{ NavRouteButton { "MIC" }, NavRouteButton { "PRE" },
-        NavRouteButton { "COMP" }, NavRouteButton { "HARMONICS" }, NavRouteButton { "SUMMING" },
+        NavRouteButton { "COMP" }, NavRouteButton { "HARMONICS" }, NavRouteButton { "SUM" },
         NavRouteButton { "MASTER" }, NavRouteButton { "OUTPUT" } }};
 
     IconBarButton presetPrev { "<" }, presetNext { ">" };
@@ -70,25 +84,29 @@ private:
     PremiumFader inputFader { "INPUT LEVEL", 0.0, " dB" };
     PremiumFader outputFader { "OUTPUT LEVEL", 0.0, " dB" };
     PremiumKnob bodyKnob { "BODY", 0.0, "" };
+    PremiumKnob bodyProtectKnob { "BODY PROTECT", 50.0, " %" };
+    PremiumKnob airProtectKnob  { "AIR PROTECT", 50.0, " %" };
     PremiumKnob presenceKnob { "PRESENCE", 0.0, "" };
     PremiumKnob airKnob { "AIR", 0.0, "" };
-    PremiumKnob micCharColorKnob { "COLOR", 12.0, "" };
+    PremiumKnob micCharAmountKnob { "AMOUNT", 12.0, "" };
     PremiumKnob micCharOutputKnob { "OUTPUT", 0.0, " dB" };
     PremiumKnob micCharInputTrimKnob { "IN TRIM", 0.0, " dB" };
-    PremiumKnob micCharProximityKnob { "PROX", 0.0, "" };
+    PremiumKnob micCharProximityKnob { "PROXIMITY", 0.0, "" };
     PremiumKnob micCharDeHarshKnob { "DE-HARSH", 25.0, "" };
     PremiumKnob micCharSibilanceKnob { "SIBILANCE", 20.0, "" };
-    PremiumKnob tubeDriveKnob { "TUBE", 25.0, " %" };
+    PremiumKnob tubeDriveKnob { "TUBE DRIVE", 25.0, " %" };
     PremiumKnob saturation { "SATURATION", 20.0, " %" };
     PremiumKnob tubeBias { "BIAS", 0.0, " %" };
-    PremiumKnob transformer { "TRANSFORMER", 20.0, " %" };
+    PremiumKnob transformer { "WEIGHT", 20.0, " %" };
     PremiumKnob summing { "SUMMING", 20.0, " %" };
     PremiumKnob glue { "GLUE", 20.0, " %" };
     PremiumKnob correction { "CORRECTION", 35.0, " %" };
     PremiumKnob targetAmount { "TARGET", 50.0, " %" };
-    PremiumKnob badFreq { "BAD FREQ", 35.0, " %" };
+    PremiumKnob badFreq { "BAD FREQ TAMER", 35.0, " %" };
     PremiumKnob preampDrive { "DRIVE", 25.0, " %" };
-    PremiumKnob aura { "AURA BIG", 0.0, " %" };
+    PremiumKnob preampToneKnob { "TONE", 0.0, " %" };
+    PremiumKnob preampOutputKnob { "OUTPUT", 0.0, " dB" };
+    PremiumKnob aura { "BIG AURA", 0.0, " %" };
     PremiumKnob compAmount { "AMOUNT", 0.0, " %" };
     PremiumKnob attack { "ATTACK", 20.0, " ms" };
     PremiumKnob release { "RELEASE", 400.0, " ms" };
@@ -102,15 +120,18 @@ private:
     juce::ComboBox sourceMic, targetMic, micCharProfile, preampMode, tubeType, vuMode, consoleMode, presets;
     juce::ToggleButton micCharBypass { "BYPASS" };
     juce::ToggleButton micCharSimpleMode { "SIMPLE" };
+    juce::ToggleButton micCharHpfBtn { "HPF" };
+    juce::ToggleButton preampPolarityBtn { "\u00d8" };
     juce::ToggleButton hardwareSafe { "HARDWARE SAFE" };
     juce::ToggleButton compressorEnable { "COMP ON" };
-    juce::ToggleButton limiter { "LIMITER" };
+    juce::ToggleButton limiter { "LIMITER ON" };
     juce::ToggleButton bypass { "BYPASS" };
     juce::ToggleButton mono { "MONO" };
     juce::ToggleButton dim { "DIM" };
 
     juce::Label logoTitle, logoSubtitle, sweetZone, sweetLow, sweetHot;
-    juce::Label presetCard, latencyLabel, oversamplingLabel, monitorLabel;
+    juce::Label presetCard, factoryPresetLabel, latencyLabel, oversamplingLabel, monitorLabel;
+    juce::Label bigAuraSubtitle, saMarkLabel;
 
     VerticalRmsMeter inputRms { "INPUT" };
     VerticalRmsMeter outputRms { "OUTPUT" };
@@ -126,6 +147,7 @@ private:
     SegmentedChoiceBar qualityBar;
     SegmentedChoiceBar compModelBar;
     SegmentedChoiceBar compProfileBar;
+    SegmentedChoiceBar vuModeBar;
 
     juce::ToggleButton compBypassBtn { "BYPASS" };
     juce::ComboBox compTimingMode;
@@ -156,7 +178,7 @@ private:
     AuraHorizontalVUMeter grHorizontalMeter { AuraHorizontalVUMeter::MeterMode::GainReduction };
     AuraHorizontalVUMeter outputVuMeter     { AuraHorizontalVUMeter::MeterMode::Output };
 
-    // Aura big label (above aura knob in hero panel)
+    // BIG AURA title (section header above hero knob)
     juce::Label auraBigLabel;
     AuraBigHeatRing auraHeatRing;
     std::array<AuraBigStageLed, 9> auraBigStageLeds {{
@@ -165,7 +187,10 @@ private:
         AuraBigStageLed { "AIR" }, AuraBigStageLed { "WIDTH" }, AuraBigStageLed { "LIMIT" }
     }};
 
+    juce::ToggleButton eqEnableBtn { "EQ ON" };
+
     std::unique_ptr<ExpandedEQPanel> expandedEQPanel;
+    std::unique_ptr<EqModalBackdrop> eqModalBackdrop;
 
     std::vector<std::unique_ptr<SliderAttachment>> sliderAttachments;
     std::vector<std::unique_ptr<ButtonAttachment>> buttonAttachments;

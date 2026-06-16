@@ -92,6 +92,7 @@ public:
     void mouseWheelMove   (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
     void mouseDoubleClick (const juce::MouseEvent&) override;
     void mouseMove        (const juce::MouseEvent&) override;
+    void mouseExit        (const juce::MouseEvent&) override;
 
     // --- Wire from PluginEditor -----------------------------------------------
     void bindToParameters (juce::AudioProcessorValueTreeState& apvts);
@@ -121,6 +122,9 @@ public:
     static constexpr float dbRangeOptions[] = { 3.0f, 6.0f, 12.0f, 30.0f };
 
     void setAuraTraceOn (bool on) noexcept { auraTraceOn = on; repaint(); }
+    void setCompactMode (bool shouldBeCompact) noexcept;
+    void setEqBypassed (bool bypassed) noexcept;
+    bool isCompactMode() const noexcept { return compactMode; }
     void setDbRangeIndex (int idx) noexcept
     {
         dbRangeIndex   = juce::jlimit (0, 3, idx);
@@ -139,6 +143,7 @@ private:
     void setParameterFloat (const juce::String& id, float value);
     void setParameterChoice (const juce::String& id, int index);
 
+    void drawHeaderBar   (juce::Graphics& g) const;
     void drawBackground    (juce::Graphics& g, juce::Rectangle<float> plot) const;
     void drawGrid          (juce::Graphics& g, juce::Rectangle<float> plot) const;
     void drawAuraTrace     (juce::Graphics& g, juce::Rectangle<float> plot) const;
@@ -182,6 +187,9 @@ private:
     int   dbRangeIndex   = 2;   // index into dbRangeOptions[]
     bool  auraTraceOn    = false;
     bool  expanded       = false;
+    bool  compactMode    = true;
+    bool  eqBypassed     = false;
+    bool  hoverGlow      = false;
     float toneValue      = 0.0f;
 
     juce::String tooltipText;

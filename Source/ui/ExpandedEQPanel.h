@@ -1,13 +1,11 @@
 #pragma once
 #include <JuceHeader.h>
 #include "EQPanel.h"
+#include "PremiumKnob.h"
+#include "RackComponents.h"
 
-// Forward declaration to avoid pulling in the full processor header here
 class StadiumAuraAudioProcessor;
 
-//==============================================================================
-// A single card representing one EQ band in the bottom cards row.
-//==============================================================================
 class BandCardComponent : public juce::Component
 {
 public:
@@ -20,17 +18,13 @@ public:
     std::function<void (int)> onSelected;
 
 private:
-    int        bandIdx   = -1;
+    int         bandIdx   = -1;
     EQBandState bandState {};
-    bool       selected  = false;
+    bool        selected  = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (BandCardComponent)
 };
 
-//==============================================================================
-// Full-screen overlay panel that shows the expanded AURA EQ interface.
-// Open it by calling setVisible(true); close via the close button (onClose callback).
-//==============================================================================
 class ExpandedEQPanel : public juce::Component
 {
 public:
@@ -39,57 +33,70 @@ public:
 
     void paint   (juce::Graphics& g) override;
     void resized () override;
+    bool keyPressed (const juce::KeyPress& key) override;
 
-    // Call from editor's timerCallback when this panel is visible
     void refreshFromParameters ();
 
-    // Called when the close button is pressed — editor should hide this panel
     std::function<void()> onClose;
 
 private:
-    // ── Layout geometry ──────────────────────────────────────────────────────
-    static constexpr int kHeaderH  = 44;
-    static constexpr int kCardsH   = 84;
-    static constexpr int kCardW    = 90;
-    static constexpr int kOuterPad = 8;
+    static constexpr int kHeaderH    = 44;
+    static constexpr int kCardsH     = 84;
+    static constexpr int kCardW      = 90;
+    static constexpr int kOuterPad   = 8;
+    static constexpr int kLeftStripW = 118;
+    static constexpr int kRightStripW = 78;
 
-    juce::Rectangle<int> getHeaderArea () const;
-    juce::Rectangle<int> getGraphArea  () const;
-    juce::Rectangle<int> getCardsArea  () const;
+    juce::Rectangle<int> getHeaderArea  () const;
+    juce::Rectangle<int> getContentArea () const;
+    juce::Rectangle<int> getLeftStripArea  () const;
+    juce::Rectangle<int> getGraphArea   () const;
+    juce::Rectangle<int> getRightStripArea () const;
+    juce::Rectangle<int> getCardsArea   () const;
 
-    // ── Header controls ──────────────────────────────────────────────────────
     juce::Label      titleLabel;
-    juce::TextButton bypassButton    { "PWR" };
-    juce::TextButton closeButton     { "X" };
+    juce::TextButton eqOnButton      { "EQ ON" };
+    juce::TextButton closeButton     { "\u00d7" };
     juce::TextButton auraTraceButton { "TRACE" };
     juce::ComboBox   stereoModeBox;
     juce::ComboBox   analyzerModeBox;
     juce::ComboBox   scaleBox;
 
-    // ── EQ graph ─────────────────────────────────────────────────────────────
+    juce::Label      selectedBandLabel;
+    PremiumKnob      bandFreqKnob { "FREQ", 1000.0, " Hz" };
+    PremiumKnob      bandGainKnob { "GAIN", 0.0, " dB" };
+    PremiumKnob      bandQKnob    { "Q", 1.0, "" };
+    juce::ComboBox   bandTypeBox;
+    juce::ToggleButton bandEnableBtn { "ON" };
+
+    VerticalRmsMeter inputMeter  { "INPUT" };
+    VerticalRmsMeter outputMeter { "OUTPUT" };
+
     EQPanel eqGraph;
 
-    // ── Band cards row (horizontally scrollable) ──────────────────────────────
     juce::Viewport  cardsViewport;
     juce::Component cardsContainer;
     std::array<BandCardComponent, 24> bandCards;
     juce::TextButton addBandButton { "+ ADD" };
 
-    // ── State ─────────────────────────────────────────────────────────────────
     StadiumAuraAudioProcessor& processorRef;
     std::array<EQBandState, 24> cachedBandStates {};
-    int  selectedBandIdx = -1;
+    int  selectedBandIdx = 0;
     bool auraTraceOn     = false;
     bool bypassed        = false;
 
-    // ── APVTS attachment for bypass button ────────────────────────────────────
+    using SliderAttach = juce::AudioProcessorValueTreeState::SliderAttachment;
     using ButtonAttach = juce::AudioProcessorValueTreeState::ButtonAttachment;
-    std::unique_ptr<ButtonAttach> bypassAttachment;
+    using ComboAttach  = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
-    void buildCardLayout ();
-    void selectBand      (int idx);
-    void updateBandCards ();
+    std::unique_ptr<ButtonAttach> eqEnableAttachment;
+    std::vector<std::unique_ptr<SliderAttach>> bandSliderAttachments;
+    std::unique_ptr<ButtonAttach> bandEnableAttachment;
+    std::unique_ptr<ComboAttach>  bandTypeAttachment;
+
+    void rebuildBandControlAttachments();
+    void selectBand (int idx);
+    void updateBandCards();
 
     static juce::Colour bandTypeColour (EQBandType t) noexcept;
 
