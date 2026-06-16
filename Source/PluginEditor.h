@@ -47,7 +47,7 @@ private:
     void updateEqDisplayState();
     void captureAbState (int slot);
     void restoreAbState (int slot);
-    void refreshCompressorProfileBar();
+    void refreshCompressorProfileCombo();
     void updateMicCharacterControlVisibility();
     void updateCompressorControlVisibility();
     void layoutKnobRow (juce::Rectangle<int>& area, std::initializer_list<juce::Slider*> knobs);
@@ -65,6 +65,13 @@ private:
     RackModulePanel preampPanel { "PREAMP" };
     RackModulePanel bigAuraPanel { "BIG AURA" };
     RackModulePanel compressorPanel { "COMPRESSOR" };
+    RackModulePanel saturationPanel { "SATURATION" };
+    RackModulePanel transformerPanel { "TRANSFORMER" };
+    RackModulePanel consolePanel { "CONSOLE / SUMMING" };
+    RackModulePanel gluePanel { "BUS GLUE" };
+    RackModulePanel eqStripPanel { "EQ (CLICK TO EXPAND)" };
+    RackModulePanel widthPanel { "STEREO WIDTH" };
+    RackModulePanel limiterPanel { "LIMITER" };
 
     std::array<NavRouteButton, 7> routing {{ NavRouteButton { "MIC" }, NavRouteButton { "PRE" },
         NavRouteButton { "COMP" }, NavRouteButton { "HARMONICS" }, NavRouteButton { "SUM" },
@@ -95,11 +102,12 @@ private:
     PremiumKnob micCharDeHarshKnob { "DE-HARSH", 25.0, "" };
     PremiumKnob micCharSibilanceKnob { "SIBILANCE", 20.0, "" };
     PremiumKnob tubeDriveKnob { "TUBE DRIVE", 25.0, " %" };
-    PremiumKnob saturation { "SATURATION", 20.0, " %" };
+    PremiumFader tubeDriveFader { "TUBE DRIVE", 25.0, " %" };
+    PremiumKnob saturation { "Amount", 20.0, " %" };
     PremiumKnob tubeBias { "BIAS", 0.0, " %" };
-    PremiumKnob transformer { "WEIGHT", 20.0, " %" };
-    PremiumKnob summing { "SUMMING", 20.0, " %" };
-    PremiumKnob glue { "GLUE", 20.0, " %" };
+    PremiumKnob transformer { "Weight", 20.0, " %" };
+    PremiumKnob summing { "Density", 25.0, " %" };
+    PremiumKnob glue { "Amount", 20.0, " %" };
     PremiumKnob correction { "CORRECTION", 35.0, " %" };
     PremiumKnob targetAmount { "TARGET", 50.0, " %" };
     PremiumKnob badFreq { "BAD FREQ TAMER", 35.0, " %" };
@@ -118,36 +126,37 @@ private:
     PremiumKnob ceiling { "CEILING", -1.0, " dB" };
 
     juce::ComboBox sourceMic, targetMic, micCharProfile, preampMode, tubeType, vuMode, consoleMode, presets;
+    juce::ComboBox compModeCombo, compModelCombo, compProfileCombo;
     juce::ToggleButton micCharBypass { "BYPASS" };
     juce::ToggleButton micCharSimpleMode { "SIMPLE" };
     juce::ToggleButton micCharHpfBtn { "HPF" };
     juce::ToggleButton preampPolarityBtn { "\u00d8" };
     juce::ToggleButton hardwareSafe { "HARDWARE SAFE" };
     juce::ToggleButton compressorEnable { "COMP ON" };
-    juce::ToggleButton limiter { "LIMITER ON" };
+    juce::ToggleButton limiter { "ON" };
     juce::ToggleButton bypass { "BYPASS" };
     juce::ToggleButton mono { "MONO" };
     juce::ToggleButton dim { "DIM" };
 
-    juce::Label logoTitle, logoSubtitle, sweetZone, sweetLow, sweetHot;
-    juce::Label presetCard, factoryPresetLabel, latencyLabel, oversamplingLabel, monitorLabel;
-    juce::Label bigAuraSubtitle, saMarkLabel;
+    juce::Label sourceMicLabel, targetMicLabel;
+    juce::Label consoleModeLabel, consoleTracksLabel;
+    juce::Label compModeLabel, compMeterLabel, compModelLabel, compProfileLabel;
+    juce::Label logoStadium, logoAura, logoSubtitle, sweetZone, sweetLow, sweetHot;
+    juce::Label presetCard, factoryPresetLabel, utilityPresetLabel, latencyLabel, oversamplingLabel, monitorLabel;
+    juce::Label bigAuraSubtitle, sweetZoneTitle, tubeTypeLabel, saMarkLabel;
 
     VerticalRmsMeter inputRms { "INPUT" };
     VerticalRmsMeter outputRms { "OUTPUT" };
     StereoLrMeter inputLrMeter { "INPUT" };
     StereoLrMeter outputLrMeter { "OUTPUT" };
     HorizontalReductionMeter grMeter { "GAIN REDUCTION" };
-    HorizontalReductionMeter limMeter { "LIMITER GR" };
+    VerticalReductionMeter limMeter { "REDUCTION" };
     VuMeterComponent vuMeter;
     TubeChamberComponent tubeChamber;
     EQPanel eqDisplay;
     SegmentedChoiceBar trackButtons;
-    SegmentedChoiceBar compModeButtons;
     SegmentedChoiceBar qualityBar;
-    SegmentedChoiceBar compModelBar;
-    SegmentedChoiceBar compProfileBar;
-    SegmentedChoiceBar vuModeBar;
+    SegmentedChoiceBar compMeterTapBar;
 
     juce::ToggleButton compBypassBtn { "BYPASS" };
     juce::ComboBox compTimingMode;
@@ -157,7 +166,7 @@ private:
     PremiumKnob compDriveKnob   { "DRIVE", 0.0,  " %" };
     PremiumKnob compDensityKnob { "DENSITY",  0.0,  " %" };
     PremiumKnob compWarmthKnob  { "WARMTH",  0.0,  " %" };
-    PremiumKnob compOutputKnob  { "OUTPUT",   0.0,  " dB" };
+    PremiumKnob compOutputKnob  { "MAKEUP",   0.0,  " dB" };
     HorizontalReductionMeter compGrMeter { "GAIN REDUCTION" };
     juce::Label compTargetGrLabel;
 

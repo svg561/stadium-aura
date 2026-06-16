@@ -105,6 +105,21 @@ void PremiumLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int 
                     tick % (hero ? 5 : 3) == 0 ? 1.4f : 0.8f);
     }
 
+    if (hero)
+    {
+        g.setColour (UiPalette::accentGold().withAlpha (0.75f));
+        g.setFont (juce::FontOptions (9.0f, juce::Font::bold));
+        for (const auto& [tickNorm, labelText] : { std::pair { 0.0f, "0" }, { 0.5f, "50" }, { 1.0f, "100" } })
+        {
+            const auto tickAngle = start + tickNorm * (end - start);
+            const auto labelR = radius + 12.0f;
+            const auto lx = centre.x + std::sin (tickAngle) * labelR;
+            const auto ly = centre.y - std::cos (tickAngle) * labelR;
+            g.drawText (labelText, juce::roundToInt (lx - 12.0f), juce::roundToInt (ly - 7.0f), 24, 14,
+                        juce::Justification::centred);
+        }
+    }
+
     juce::Path valueArc;
     valueArc.addCentredArc (centre.x, centre.y, radius - 1.0f, radius - 1.0f, 0.0f, start, angle, true);
     g.setColour (hero ? UiPalette::accentGlow() : UiPalette::accentGold());
@@ -135,15 +150,43 @@ void PremiumLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButton
                                      highlighted, down, button.getToggleState(), button.isEnabled());
 }
 
+juce::Font PremiumLookAndFeel::getComboBoxFont (juce::ComboBox&)
+{
+    return juce::Font (juce::FontOptions (11.0f));
+}
+
+void PremiumLookAndFeel::positionComboBoxText (juce::ComboBox& box, juce::Label& label)
+{
+    label.setBounds (8, 0, box.getWidth() - 24, box.getHeight());
+    label.setFont (getComboBoxFont (box));
+    label.setJustificationType (juce::Justification::centredLeft);
+    label.setMinimumHorizontalScale (1.0f);
+}
+
+void PremiumLookAndFeel::drawLabel (juce::Graphics& g, juce::Label& label)
+{
+    if (dynamic_cast<juce::ComboBox*> (label.getParentComponent()) != nullptr)
+    {
+        if (label.isBeingEdited())
+            return;
+
+        const auto alpha = label.isEnabled() ? 1.0f : 0.5f;
+        g.setColour (label.findColour (juce::Label::textColourId).withMultipliedAlpha (alpha));
+        g.setFont (getLabelFont (label));
+
+        const auto textArea = getLabelBorderSize (label).subtractedFrom (label.getLocalBounds());
+        g.drawText (label.getText(), textArea, label.getJustificationType(), true);
+        return;
+    }
+
+    LookAndFeel_V4::drawLabel (g, label);
+}
+
 void PremiumLookAndFeel::drawComboBox (juce::Graphics& g, int width, int height, bool, int, int, int, int,
-                                       juce::ComboBox& box)
+                                       juce::ComboBox&)
 {
     auto bounds = juce::Rectangle<float> (0.0f, 0.0f, static_cast<float> (width), static_cast<float> (height)).reduced (1.0f);
     RackDrawing::paintInsetDisplay (g, bounds);
-    g.setColour (box.findColour (juce::ComboBox::textColourId));
-    g.setFont (juce::FontOptions (11.0f));
-    g.drawFittedText (box.getText(), bounds.reduced (8.0f, 0.0f).withTrimmedRight (18.0f).toNearestInt(),
-                      juce::Justification::centredLeft, 1);
     juce::Path arrow;
     arrow.addTriangle (static_cast<float> (width - 16), height * 0.40f,
                        static_cast<float> (width - 8), height * 0.40f,

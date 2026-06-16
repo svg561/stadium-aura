@@ -428,6 +428,53 @@ void EQPanel::updateFromParameters (juce::AudioProcessorValueTreeState& apvts, d
         s.releaseMs       = get (pfx + "RELEASE");
     }
     repaint();
+
+    if (compactMode)
+        syncCompactMacroBands (apvts);
+}
+
+void EQPanel::syncCompactMacroBands (juce::AudioProcessorValueTreeState& apvts)
+{
+    auto get = [&apvts] (const char* id) -> float
+    {
+        if (auto* p = apvts.getRawParameterValue (id))
+            return p->load();
+        return 0.0f;
+    };
+
+    auto& hpf = bandStates[0];
+    hpf.enabled = true;
+    hpf.type = EQBandType::LowCut;
+    hpf.frequencyHz = get ("eqHpfHz");
+    hpf.gainDb = 0.0f;
+
+    auto& low = bandStates[1];
+    low.enabled = true;
+    low.type = EQBandType::LowShelf;
+    low.frequencyHz = get ("eqLowShelfHz");
+    low.gainDb = get ("eqLowShelfGainDb");
+
+    auto& bell = bandStates[2];
+    bell.enabled = true;
+    bell.type = EQBandType::Bell;
+    bell.frequencyHz = get ("eqBellHz");
+    bell.gainDb = get ("eqBellGainDb");
+    bell.q = get ("eqBellQ");
+
+    auto& high = bandStates[3];
+    high.enabled = true;
+    high.type = EQBandType::HighShelf;
+    high.frequencyHz = get ("eqHighShelfHz");
+    high.gainDb = get ("eqHighShelfGainDb");
+
+    auto& lpf = bandStates[4];
+    lpf.enabled = true;
+    lpf.type = EQBandType::HighCut;
+    lpf.frequencyHz = get ("eqLpfHz");
+    lpf.gainDb = 0.0f;
+
+    for (int i = 5; i < 24; ++i)
+        bandStates[static_cast<size_t> (i)].enabled = false;
 }
 
 void EQPanel::setCompactMode (bool shouldBeCompact) noexcept
@@ -503,13 +550,33 @@ void EQPanel::paint (juce::Graphics& g)
 
 void EQPanel::drawHeaderBar (juce::Graphics& g) const
 {
-    auto header = getLocalBounds().removeFromTop (18).toFloat().reduced (4.0f, 1.0f);
-    g.setColour (RackDrawing::Palette::textSecondary());
-    g.setFont (juce::FontOptions (11.5f, juce::Font::bold).withKerningFactor (0.04f));
-    g.drawText ("AURA EQ", header.toNearestInt(), juce::Justification::centredLeft);
-    g.setFont (juce::FontOptions (9.0f, juce::Font::bold));
-    g.setColour (RackDrawing::Palette::textDim());
-    g.drawText ("CLICK TO EXPAND", header.withTrimmedLeft (72.0f).toNearestInt(), juce::Justification::centredRight);
+    if (! compactMode)
+    {
+        auto header = getLocalBounds().removeFromTop (18).toFloat().reduced (4.0f, 1.0f);
+        g.setColour (RackDrawing::Palette::textSecondary());
+        g.setFont (juce::FontOptions (11.5f, juce::Font::bold).withKerningFactor (0.04f));
+        g.drawText ("AURA EQ", header.toNearestInt(), juce::Justification::centredLeft);
+        g.setFont (juce::FontOptions (9.0f, juce::Font::bold));
+        g.setColour (RackDrawing::Palette::textDim());
+        g.drawText ("CLICK TO EXPAND", header.withTrimmedLeft (72.0f).toNearestInt(), juce::Justification::centredRight);
+    }
+}
+
+juce::Array<int> EQPanel::visibleBandIndices() const
+{
+    juce::Array<int> indices;
+    if (compactMode)
+    {
+        static const int macroBands[] { 0, 1, 2, 3, 4 };
+        for (const auto idx : macroBands)
+            indices.add (idx);
+        return indices;
+    }
+
+    for (int i = 0; i < 24; ++i)
+        if (bandStates[static_cast<size_t> (i)].enabled)
+            indices.add (i);
+    return indices;
 }
 
 void EQPanel::resized()
@@ -521,9 +588,7 @@ void EQPanel::resized()
 juce::Rectangle<float> EQPanel::getPlotBounds() const
 {
     auto b = getLocalBounds().toFloat().reduced (4.0f, 2.0f);
-    if (compactMode)
-        b.removeFromTop (18.0f);
-    else
+    if (! compactMode)
         b = b.withTrimmedBottom (24.0f);
     return b;
 }
@@ -559,8 +624,8 @@ void EQPanel::drawGrid (juce::Graphics& g, juce::Rectangle<float> plot) const
         g.setColour (juce::Colour (gridLine));
     }
 
-    // Horizontal dB lines
-    const float dbStep = visibleDbRange <= 6.0f ? 3.0f : (visibleDbRange <= 12.0f ? 6.0f : 12.0f);
+    const float dbStep = compactMode ? 6.0f
+                       : (visibleDbRange <= 6.0f ? 3.0f : (visibleDbRange <= 12.0f ? 6.0f : 12.0f));
     for (float db = -visibleDbRange; db <= visibleDbRange; db += dbStep)
     {
         const float y = EQCurveRenderer::gainToY (db, plot, visibleDbRange);
@@ -577,9 +642,14 @@ void EQPanel::drawGrid (juce::Graphics& g, juce::Rectangle<float> plot) const
 
         g.setFont (juce::FontOptions (8.0f));
         g.setColour (juce::Colour (0x66ffffff));
-        g.drawText ((db > 0 ? "+" : "") + juce::String (db, 0) + " dB",
-                    juce::Rectangle<float> (plot.getX() + 2.0f, y - 8.0f, 36.0f, 14.0f),
+        const auto label = (db > 0 ? "+" : "") + juce::String (db, 0);
+        g.drawText (label,
+                    juce::Rectangle<float> (plot.getX() + 2.0f, y - 8.0f, 28.0f, 14.0f),
                     juce::Justification::left, false);
+        if (compactMode)
+            g.drawText (label,
+                        juce::Rectangle<float> (plot.getRight() - 30.0f, y - 8.0f, 28.0f, 14.0f),
+                        juce::Justification::right, false);
     }
 }
 
@@ -670,7 +740,12 @@ void EQPanel::drawAnalyzer (juce::Graphics& g, juce::Rectangle<float> plot) cons
 
 void EQPanel::drawEQCurve (juce::Graphics& g, juce::Rectangle<float> plot) const
 {
-    const auto eqPath = EQCurveRenderer::createStaticEQPath (bandStates, plot, currentSampleRate, visibleDbRange);
+    auto bandsForCurve = bandStates;
+    if (compactMode)
+        for (int i = 5; i < 24; ++i)
+            bandsForCurve[static_cast<size_t> (i)].enabled = false;
+
+    const auto eqPath = EQCurveRenderer::createStaticEQPath (bandsForCurve, plot, currentSampleRate, visibleDbRange);
     if (eqPath.isEmpty()) return;
 
     // Glow
@@ -711,23 +786,31 @@ juce::Point<float> EQPanel::nodePosition (int bandIdx) const
 
 void EQPanel::drawNodes (juce::Graphics& g, juce::Rectangle<float> /*plot*/) const
 {
-    for (int i = 0; i < 24; ++i)
+    const auto visible = visibleBandIndices();
+    const int maxVisible = compactMode ? 5 : 24;
+    int drawn = 0;
+
+    for (const int i : visible)
     {
+        if (drawn >= maxVisible)
+            break;
+
         const auto& s = bandStates[static_cast<size_t> (i)];
+        if (compactMode && ! s.enabled)
+            continue;
+
         const auto  pos = nodePosition (i);
-        const float radius = (i == selectedBand) ? 9.0f : 7.0f;
+        const float radius = compactMode ? 8.0f : ((i == selectedBand) ? 9.0f : 7.0f);
         const auto  col = nodeColour (s.type);
         const float alpha = s.enabled ? 1.0f : 0.4f;
 
-        // Outer glow ring for selected
-        if (i == selectedBand)
+        if (i == selectedBand && ! compactMode)
         {
             g.setColour (col.withAlpha (0.35f * alpha));
             g.fillEllipse (pos.x - radius - 4.0f, pos.y - radius - 4.0f,
                            (radius + 4.0f) * 2.0f, (radius + 4.0f) * 2.0f);
         }
 
-        // Fill + stroke
         juce::ColourGradient nodeGrad (col.brighter (0.4f).withAlpha (alpha), pos.x - radius * 0.3f, pos.y - radius * 0.3f,
                                        col.darker  (0.3f).withAlpha (alpha), pos.x + radius * 0.4f, pos.y + radius * 0.5f, true);
         g.setGradientFill (nodeGrad);
@@ -735,15 +818,12 @@ void EQPanel::drawNodes (juce::Graphics& g, juce::Rectangle<float> /*plot*/) con
         g.setColour (col.withAlpha (alpha));
         g.drawEllipse (pos.x - radius, pos.y - radius, radius * 2.0f, radius * 2.0f, 1.0f);
 
-        // Band number
-        if (radius >= 7.0f)
-        {
-            g.setFont (juce::FontOptions (7.5f, juce::Font::bold));
-            g.setColour (juce::Colours::white.withAlpha (alpha));
-            g.drawText (juce::String (i + 1),
-                        juce::Rectangle<float> (pos.x - radius, pos.y - radius, radius * 2.0f, radius * 2.0f),
-                        juce::Justification::centred, false);
-        }
+        g.setFont (juce::FontOptions (compactMode ? 8.0f : 7.5f, juce::Font::bold));
+        g.setColour (juce::Colours::white.withAlpha (alpha));
+        g.drawText (juce::String (drawn + 1),
+                    juce::Rectangle<float> (pos.x - radius, pos.y - radius, radius * 2.0f, radius * 2.0f),
+                    juce::Justification::centred, false);
+        ++drawn;
     }
 }
 

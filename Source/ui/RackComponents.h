@@ -174,6 +174,19 @@ private:
     float displayed = 0.0f;
 };
 
+class VerticalReductionMeter final : public juce::Component, private juce::Timer
+{
+public:
+    explicit VerticalReductionMeter (juce::String titleText);
+    void setTargetDb (float reductionDb) noexcept;
+    void paint (juce::Graphics&) override;
+private:
+    void timerCallback() override;
+    juce::String title;
+    std::atomic<float> target { 0.0f };
+    float displayed = 0.0f;
+};
+
 class SegmentedChoiceBar final : public juce::Component
 {
 public:

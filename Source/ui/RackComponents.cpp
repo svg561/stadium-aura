@@ -197,7 +197,7 @@ void TubeChamberComponent::paint (juce::Graphics& g)
     auto header = b.removeFromTop (16.0f);
     g.setColour (juce::Colour (0xffffc46a));
     g.setFont (juce::FontOptions (8.5f, juce::Font::bold));
-    g.drawText ("CLASS A TUBE CHAMBER", header, juce::Justification::centred);
+    g.drawText ("TUBE CHAMBER", header, juce::Justification::centred);
     auto window = b.reduced (7.0f, 5.0f);
     juce::ColourGradient bay (juce::Colour (0xff1a1009), window.getX(), window.getY(),
                               juce::Colour (0xff050403), window.getRight(), window.getBottom(), true);
@@ -612,6 +612,61 @@ void HorizontalReductionMeter::paint (juce::Graphics& g)
     g.setColour (juce::Colour (0xffd8b878));
     g.setFont (juce::FontOptions (8.5f, juce::Font::bold));
     g.drawText (juce::String (displayed, 1) + " dB", meter, juce::Justification::centred);
+}
+
+VerticalReductionMeter::VerticalReductionMeter (juce::String titleText) : title (std::move (titleText))
+{
+    startTimerHz (60);
+}
+
+void VerticalReductionMeter::setTargetDb (float reductionDb) noexcept
+{
+    target.store (juce::jlimit (0.0f, 12.0f, reductionDb), std::memory_order_relaxed);
+}
+
+void VerticalReductionMeter::timerCallback()
+{
+    const auto next = target.load (std::memory_order_relaxed);
+    displayed += (next - displayed) * (next > displayed ? 0.32f : 0.10f);
+    repaint();
+}
+
+void VerticalReductionMeter::paint (juce::Graphics& g)
+{
+    auto b = getLocalBounds().toFloat().reduced (2.0f);
+    RackDrawing::paintInsetDisplay (g, b);
+    g.setColour (juce::Colour (0xff8d806c));
+    g.setFont (juce::FontOptions (8.0f, juce::Font::bold));
+    g.drawText (title, b.removeFromTop (12.0f), juce::Justification::centred);
+
+    auto readout = b.removeFromBottom (14.0f);
+    auto meter = b.reduced (4.0f, 2.0f);
+    g.setColour (juce::Colour (0xff0a0c0e));
+    g.fillRoundedRectangle (meter, 3.0f);
+
+    g.setFont (juce::FontOptions (7.0f));
+    g.setColour (juce::Colour (0xff6f6250));
+    for (int db = 0; db >= -12; db -= 3)
+    {
+        const auto y = juce::jmap (static_cast<float> (db), 0.0f, -12.0f, meter.getY(), meter.getBottom());
+        g.drawText (juce::String (db),
+                    juce::roundToInt (meter.getX() - 14.0f), juce::roundToInt (y - 5.0f),
+                    12, 10, juce::Justification::centredRight);
+        g.setColour (juce::Colour (0x18ffffff));
+        g.drawHorizontalLine (juce::roundToInt (y), meter.getX(), meter.getRight());
+        g.setColour (juce::Colour (0xff6f6250));
+    }
+
+    const auto norm = juce::jlimit (0.0f, 1.0f, displayed / 12.0f);
+    auto fill = meter.removeFromTop (meter.getHeight() * norm);
+    juce::ColourGradient grad (juce::Colour (0xffffc15b), fill.getCentreX(), fill.getY(),
+                               juce::Colour (0xffe85a2f), fill.getCentreX(), fill.getBottom(), false);
+    g.setGradientFill (grad);
+    g.fillRoundedRectangle (fill, 2.0f);
+
+    g.setColour (juce::Colour (0xffd8b878));
+    g.setFont (juce::FontOptions (8.5f, juce::Font::bold));
+    g.drawText ("-" + juce::String (displayed, 1) + " dB", readout, juce::Justification::centred);
 }
 
 void SegmentedChoiceBar::setChoices (juce::StringArray labels)

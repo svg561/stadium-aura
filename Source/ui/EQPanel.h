@@ -144,6 +144,8 @@ private:
     void setParameterChoice (const juce::String& id, int index);
 
     void drawHeaderBar   (juce::Graphics& g) const;
+    juce::Array<int> visibleBandIndices() const;
+    void syncCompactMacroBands (juce::AudioProcessorValueTreeState& apvts);
     void drawBackground    (juce::Graphics& g, juce::Rectangle<float> plot) const;
     void drawGrid          (juce::Graphics& g, juce::Rectangle<float> plot) const;
     void drawAuraTrace     (juce::Graphics& g, juce::Rectangle<float> plot) const;
