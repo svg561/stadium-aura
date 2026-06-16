@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "StadiumAuraFactoryPresets.h"
 #include "dsp/EQBand.h"
 #include "dsp/AuraCompressorEngine.h"
 #include "dsp/AuraMicCharacterEngine.h"
@@ -666,10 +667,45 @@ juce::AudioProcessorEditor* StadiumAuraAudioProcessor::createEditor()
     return new StadiumAuraAudioProcessorEditor (*this);
 }
 
+juce::String StadiumAuraAudioProcessor::getFactoryPresetGroupName (int index) const
+{
+    return juce::isPositiveAndBelow (index, static_cast<int> (factoryPresets.size()))
+        ? factoryPresets[static_cast<size_t> (index)].groupName
+        : juce::String();
+}
+
+bool StadiumAuraAudioProcessor::isFirstPresetInGroup (int index) const
+{
+    if (! juce::isPositiveAndBelow (index, static_cast<int> (factoryPresets.size())))
+        return false;
+
+    return index == 0
+        || factoryPresets[static_cast<size_t> (index)].groupName
+            != factoryPresets[static_cast<size_t> (index - 1)].groupName;
+}
+
 void StadiumAuraAudioProcessor::setCurrentProgram (int index)
 {
     index = juce::jlimit (0, getNumPrograms() - 1, index);
     currentProgram = index;
+    const auto& preset = factoryPresets[static_cast<size_t> (index)];
+
+    if (preset.vocalPresetIndex >= 0)
+    {
+        constexpr const char* ids[] { Param::input, Param::output, Param::mix, Param::aura, Param::tubeDrive,
+            Param::saturation, Param::harmonicBias, Param::transformer, Param::summing, Param::glue,
+            Param::tone, Param::trackCount, Param::micCharacter, Param::preampMode, Param::tubeSwap, Param::width,
+            Param::monoCheck, Param::limiter, Param::ceiling, Param::compressorMode, Param::compressorAmount,
+            Param::makeup, Param::bypass, Param::dim, Param::quality };
+        for (size_t i = 0; i < std::size (ids); ++i)
+            if (auto* parameter = apvts.getParameter (ids[i]))
+                parameter->setValueNotifyingHost (parameter->convertTo0to1 (preset.values[i]));
+
+        StadiumAuraPresets::applyVocalChainPreset (apvts,
+            StadiumAuraPresets::getVocalChainPresets()[static_cast<size_t> (preset.vocalPresetIndex)]);
+        return;
+    }
+
     constexpr const char* ids[] { Param::input, Param::output, Param::mix, Param::aura, Param::tubeDrive,
         Param::saturation, Param::harmonicBias, Param::transformer, Param::summing, Param::glue,
         Param::tone, Param::trackCount, Param::micCharacter, Param::preampMode, Param::tubeSwap, Param::width,
@@ -677,7 +713,7 @@ void StadiumAuraAudioProcessor::setCurrentProgram (int index)
         Param::makeup, Param::bypass, Param::dim, Param::quality };
     for (size_t i = 0; i < std::size (ids); ++i)
         if (auto* parameter = apvts.getParameter (ids[i]))
-            parameter->setValueNotifyingHost (parameter->convertTo0to1 (factoryPresets[static_cast<size_t> (index)].values[i]));
+            parameter->setValueNotifyingHost (parameter->convertTo0to1 (preset.values[i]));
 
     auto set = [this] (const char* id, float value)
     {

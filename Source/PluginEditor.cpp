@@ -243,7 +243,11 @@ StadiumAuraAudioProcessorEditor::StadiumAuraAudioProcessorEditor (StadiumAuraAud
     setFocusedRoute (0);
 
     for (int i = 0; i < processorRef.getNumPrograms(); ++i)
+    {
+        if (processorRef.isFirstPresetInGroup (i))
+            presets.addSectionHeading (processorRef.getFactoryPresetGroupName (i));
         presets.addItem (processorRef.getProgramName (i), i + 1);
+    }
     presets.setSelectedItemIndex (processorRef.getCurrentProgram(), juce::dontSendNotification);
     presets.onChange = [this]
     {
