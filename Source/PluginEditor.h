@@ -81,7 +81,7 @@ private:
     PremiumKnob targetAmount { "TGT", 50.0, " %" };
     PremiumKnob badFreq { "BAD", 35.0, " %" };
     PremiumKnob preampDrive { "DRV", 25.0, " %" };
-    PremiumKnob aura { "AURA", 50.0, " %" };
+    PremiumKnob aura { "AURA", 0.0, " %" };
     PremiumKnob compAmount { "COMP", 0.0, " %" };
     PremiumKnob compMakeup { "MK", 0.0, " dB" };
     PremiumKnob attack { "ATK", 20.0, " ms" };

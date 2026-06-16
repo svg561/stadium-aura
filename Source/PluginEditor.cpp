@@ -62,7 +62,7 @@ StadiumAuraAudioProcessorEditor::StadiumAuraAudioProcessorEditor (StadiumAuraAud
         { &tubeDriveKnob, "tubeDrive" }, { &saturation, "saturation" }, { &tubeBias, "harmonicBias" },
         { &transformer, "transformer" }, { &summing, "summing" }, { &glue, "glue" },
         { &correction, "micCorrectionAmount" }, { &targetAmount, "micTargetAmount" }, { &badFreq, "badFrequencyTamer" },
-        { &preampDrive, "preampDrive" }, { &aura, "aura" },
+        { &preampDrive, "preampDrive" },
         { &compInputKnob,   "COMP_INPUT"     }, { &threshold,   "COMP_THRESHOLD" },
         { &ratio,           "COMP_RATIO"     }, { &attack,      "COMP_ATTACK"    },
         { &release,         "COMP_RELEASE"   }, { &compMixKnob, "COMP_MIX"       },
@@ -74,6 +74,15 @@ StadiumAuraAudioProcessorEditor::StadiumAuraAudioProcessorEditor (StadiumAuraAud
         { &compSidechainKnob, "COMP_SIDECHAIN_HPF" }
     };
     for (auto [slider, id] : sliders) attachSlider (*slider, id);
+
+    addAndMakeVisible (aura);
+    aura.setTextValueSuffix (" %");
+    aura.textFromValueFunction = [] (double value) { return juce::String (value * 100.0, 1); };
+    aura.valueFromTextFunction = [] (const juce::String& text)
+    {
+        return text.trim().trimCharactersAtEnd ("%").getDoubleValue() / 100.0;
+    };
+    sliderAttachments.push_back (std::make_unique<SliderAttachment> (processorRef.apvts, "AURA_BIG_AMOUNT", aura));
 
     attachButton (hardwareSafe, "hardwareSafeMode");
     attachButton (compressorEnable, "COMP_ENABLED");
