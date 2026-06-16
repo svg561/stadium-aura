@@ -150,6 +150,12 @@ private:
 
     // Aura big label (above aura knob in hero panel)
     juce::Label auraBigLabel;
+    AuraBigHeatRing auraHeatRing;
+    std::array<AuraBigStageLed, 9> auraBigStageLeds {{
+        AuraBigStageLed { "IN" }, AuraBigStageLed { "TONE" }, AuraBigStageLed { "TUBE" },
+        AuraBigStageLed { "EDGE" }, AuraBigStageLed { "IRON" }, AuraBigStageLed { "DENS" },
+        AuraBigStageLed { "AIR" }, AuraBigStageLed { "WID" }, AuraBigStageLed { "LIM" }
+    }};
 
     std::unique_ptr<ExpandedEQPanel> expandedEQPanel;
 

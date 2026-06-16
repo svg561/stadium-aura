@@ -137,6 +137,11 @@ StadiumAuraAudioProcessorEditor::StadiumAuraAudioProcessorEditor (StadiumAuraAud
     auraBigLabel.setColour (juce::Label::textColourId, juce::Colour (0xffc8962e));  // gold
     auraBigLabel.setJustificationType (juce::Justification::centred);
     addAndMakeVisible (auraBigLabel);
+    addAndMakeVisible (auraHeatRing);
+    auraHeatRing.toBack();
+
+    for (auto& led : auraBigStageLeds)
+        addAndMakeVisible (led);
 
     for (auto* c : { static_cast<juce::Component*> (&inputVuMeter),
                      static_cast<juce::Component*> (&grHorizontalMeter),
@@ -595,6 +600,10 @@ void StadiumAuraAudioProcessorEditor::resized()
         sweetLow.setBounds  (sweetRow.removeFromLeft (sweetRow.getWidth() / 3));
         sweetZone.setBounds (sweetRow.removeFromLeft (sweetRow.getWidth() / 2));
         sweetHot.setBounds  (sweetRow);
+        auto stageLedRow = ha.removeFromBottom (20);
+        const int ledSlotW = juce::jmax (1, stageLedRow.getWidth() / static_cast<int> (auraBigStageLeds.size()));
+        for (auto& led : auraBigStageLeds)
+            led.setBounds (stageLedRow.removeFromLeft (ledSlotW).reduced (0, 1));
 
         // "AURA BIG" label (bold gold) + large aura knob centered in remaining space
         // Leave at least 22 px above the knob so the label never overlaps the panel title
@@ -602,6 +611,7 @@ void StadiumAuraAudioProcessorEditor::resized()
         const auto auraRect = ha.withSizeKeepingCentre (auraSize, auraSize);
         auraBigLabel.setBounds (juce::Rectangle<int> (
             auraRect.getX(), auraRect.getY() - 22, auraRect.getWidth(), 18));
+        auraHeatRing.setBounds (auraRect.expanded (10));
         aura.setBounds (auraRect.reduced (6));
     }
 
@@ -780,12 +790,59 @@ void StadiumAuraAudioProcessorEditor::timerCallback()
 
     const auto tubeLevel = processorRef.tubeActivityMeter.load (std::memory_order_relaxed);
     const auto drive = processorRef.apvts.getRawParameterValue ("tubeDrive")->load();
-    tubeChamber.setActivity (juce::jlimit (0.0f, 1.0f, tubeLevel * 0.72f + drive * 0.0028f));
+    const float auraBigAmount = processorRef.apvts.getRawParameterValue ("AURA_BIG_AMOUNT")->load();
+    const bool auraBigActive = auraBigAmount > 0.001f
+        && processorRef.apvts.getRawParameterValue ("AURA_BIG_BYPASS")->load() <= 0.5f;
 
-    // Distortion-reactive tube colour
-    const auto distLevel = juce::jlimit (0.0f, 1.0f,
-        (out > 0.90f ? (out - 0.90f) * 10.0f : 0.0f) + tubeLevel * 0.3f);
-    tubeChamber.setDistortionLevel (distLevel);
+    if (auraBigActive)
+    {
+        const auto tubeHeat = processorRef.auraBigTubeHeat.load (std::memory_order_relaxed);
+        const auto edgeHeat = processorRef.auraBigEdgeHeat.load (std::memory_order_relaxed);
+        const auto ironHeat = processorRef.auraBigIronHeat.load (std::memory_order_relaxed);
+        const auto combinedHeat = juce::jmax (tubeHeat, edgeHeat * 0.85f, ironHeat * 0.8f);
+        tubeChamber.setActivity (juce::jlimit (0.0f, 1.0f, combinedHeat * 0.85f + auraBigAmount * 0.15f));
+        tubeChamber.setDistortionLevel (juce::jlimit (0.0f, 1.0f, tubeHeat));
+        auraHeatRing.setHeat (processorRef.auraBigGlobalHeat.load (std::memory_order_relaxed));
+    }
+    else
+    {
+        tubeChamber.setActivity (juce::jlimit (0.0f, 1.0f, tubeLevel * 0.72f + drive * 0.0028f));
+        const auto distLevel = juce::jlimit (0.0f, 1.0f,
+            (out > 0.90f ? (out - 0.90f) * 10.0f : 0.0f) + tubeLevel * 0.3f);
+        tubeChamber.setDistortionLevel (distLevel);
+        auraHeatRing.setHeat (0.0f);
+    }
+
+    const bool hardClip = processorRef.auraBigClipping.load (std::memory_order_relaxed)
+        || processorRef.auraBigLimiterGrDb.load (std::memory_order_relaxed) < -9.0f;
+    const bool amountZero = auraBigAmount <= 0.001f;
+    const std::array<float, 9> stageHeats {{
+        processorRef.auraBigStageIn.load (std::memory_order_relaxed),
+        processorRef.auraBigStageTone.load (std::memory_order_relaxed),
+        processorRef.auraBigStageTube.load (std::memory_order_relaxed),
+        processorRef.auraBigStageEdge.load (std::memory_order_relaxed),
+        processorRef.auraBigStageIron.load (std::memory_order_relaxed),
+        processorRef.auraBigStageDensity.load (std::memory_order_relaxed),
+        processorRef.auraBigStageAir.load (std::memory_order_relaxed),
+        processorRef.auraBigStageWidth.load (std::memory_order_relaxed),
+        processorRef.auraBigStageLimit.load (std::memory_order_relaxed)
+    }};
+    const std::array<bool, 9> stageBypass {{
+        processorRef.auraBigBypassIn.load (std::memory_order_relaxed),
+        processorRef.auraBigBypassTone.load (std::memory_order_relaxed),
+        processorRef.auraBigBypassTube.load (std::memory_order_relaxed),
+        processorRef.auraBigBypassEdge.load (std::memory_order_relaxed),
+        processorRef.auraBigBypassIron.load (std::memory_order_relaxed),
+        processorRef.auraBigBypassDensity.load (std::memory_order_relaxed),
+        processorRef.auraBigBypassAir.load (std::memory_order_relaxed),
+        processorRef.auraBigBypassWidth.load (std::memory_order_relaxed),
+        processorRef.auraBigBypassLimit.load (std::memory_order_relaxed)
+    }};
+    for (size_t i = 0; i < auraBigStageLeds.size(); ++i)
+    {
+        const bool limitHard = i == 8 && processorRef.auraBigLimiterGrDb.load (std::memory_order_relaxed) < -9.0f;
+        auraBigStageLeds[i].setState (stageHeats[i], amountZero || stageBypass[i], hardClip || limitHard);
+    }
 
     // Horizontal VU meters
     inputVuMeter.setTargetDb  (juce::Decibels::gainToDecibels (in  + 1e-9f));
@@ -880,9 +937,7 @@ void StadiumAuraAudioProcessorEditor::timerCallback()
     const auto hot = lim > 0.8f || gr > 10.0f || out > 0.94f || tubeLevel > 0.88f;
     const auto sweet = ! hot && in > 0.08f && (gr > 0.5f || drive > 18.0f) && out < 0.94f;
 
-    const float auraBigAmount = processorRef.apvts.getRawParameterValue ("AURA_BIG_AMOUNT")->load();
-    const bool useAuraBigSweetSpot = auraBigAmount > 0.001f
-        && processorRef.apvts.getRawParameterValue ("AURA_BIG_BYPASS")->load() <= 0.5f;
+    const bool useAuraBigSweetSpot = auraBigActive;
 
     if (useAuraBigSweetSpot)
     {

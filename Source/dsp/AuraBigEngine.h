@@ -30,6 +30,31 @@ struct AuraBigParams
 
 enum class SweetSpotState { TooLow, Sweet, Hot, Clipping };
 
+struct AuraBigVisualState
+{
+    float globalHeat = 0.f;
+    float limiterGrDb = 0.f;
+    bool clipping = false;
+    float stageIn = 0.f;
+    float stageTone = 0.f;
+    float stageTube = 0.f;
+    float stageEdge = 0.f;
+    float stageIron = 0.f;
+    float stageDensity = 0.f;
+    float stageAir = 0.f;
+    float stageWidth = 0.f;
+    float stageLimit = 0.f;
+    bool bypassIn = false;
+    bool bypassTone = false;
+    bool bypassTube = false;
+    bool bypassEdge = false;
+    bool bypassIron = false;
+    bool bypassDensity = false;
+    bool bypassAir = false;
+    bool bypassWidth = false;
+    bool bypassLimit = false;
+};
+
 class AuraBigEngine
 {
 public:
@@ -44,6 +69,7 @@ public:
     float getTubeHeat() const noexcept { return tubeHeatMeter; }
     float getEdgeHeat() const noexcept { return edgeHeatMeter; }
     float getIronHeat() const noexcept { return ironHeatMeter; }
+    AuraBigVisualState getVisualState() const noexcept { return visualState; }
 
 private:
     struct BiquadCoefficients
@@ -53,14 +79,18 @@ private:
 
     void measureInput (const juce::AudioBuffer<float>& buffer) noexcept;
     void updateSweetSpotState() noexcept;
-    void processInputTrim (juce::AudioBuffer<float>& buffer, const AuraBigParams& params, int numSamples) noexcept;
+    void processInputTrim (juce::AudioBuffer<float>& buffer, const AuraBigParams& params, float amount, int numSamples) noexcept;
     void processToneLift (juce::AudioBuffer<float>& buffer, const AuraBigParams& params, float amount) noexcept;
     void processTubeWarmth (juce::AudioBuffer<float>& buffer, const AuraBigParams& params, float amount) noexcept;
     void processTransistorEdge (juce::AudioBuffer<float>& buffer, const AuraBigParams& params, float amount) noexcept;
     void processTransformerWeight (juce::AudioBuffer<float>& buffer, const AuraBigParams& params, float amount) noexcept;
     void processVocalDensity (juce::AudioBuffer<float>& buffer, const AuraBigParams& params, float amount) noexcept;
-    void processPlaceholderStages (const AuraBigParams& params) noexcept;
+    void processAirPresence (juce::AudioBuffer<float>& buffer, const AuraBigParams& params, float amount) noexcept;
+    void processSubtleWidth (juce::AudioBuffer<float>& buffer, const AuraBigParams& params, float amount) noexcept;
     void processAdaptiveLimiter (juce::AudioBuffer<float>& buffer, const AuraBigParams& params, int numSamples) noexcept;
+    void updateGlobalVisualHeat (float amount) noexcept;
+    float measureBlockPeak (const juce::AudioBuffer<float>& buffer) const noexcept;
+    float measurePresenceBandPeak (const juce::AudioBuffer<float>& buffer) const noexcept;
     void processOutputTrim (juce::AudioBuffer<float>& buffer, const AuraBigParams& params, int numSamples) noexcept;
     void blendWithDry (juce::AudioBuffer<float>& buffer, int numSamples) noexcept;
 
@@ -81,6 +111,7 @@ private:
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> bodyGainSmoother;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> airGainSmoother;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> harshGainSmoother;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> presenceAirGainSmoother;
 
     BiquadCoefficients bodyShelfCoefficients;
     BiquadCoefficients airShelfCoefficients;
@@ -88,12 +119,18 @@ private:
     BiquadCoefficients subHpfCoefficients;
     BiquadCoefficients transistorShelfCoefficients;
     BiquadCoefficients transformerShelfCoefficients;
+    BiquadCoefficients presenceAirShelfCoefficients;
+    BiquadCoefficients presenceBandCoefficients;
     std::array<std::array<float, 2>, 4> toneZ1 {};
     std::array<std::array<float, 2>, 4> toneZ2 {};
     std::array<std::array<float, 2>, 4> transistorShelfZ1 {};
     std::array<std::array<float, 2>, 4> transistorShelfZ2 {};
     std::array<std::array<float, 2>, 4> transformerShelfZ1 {};
     std::array<std::array<float, 2>, 4> transformerShelfZ2 {};
+    std::array<std::array<float, 2>, 4> presenceAirZ1 {};
+    std::array<std::array<float, 2>, 4> presenceAirZ2 {};
+    std::array<std::array<float, 2>, 4> presenceBandZ1 {};
+    std::array<std::array<float, 2>, 4> presenceBandZ2 {};
     std::array<float, 4> tubeDcState {};
     std::array<float, 4> transformerHpfState {};
 
@@ -108,6 +145,8 @@ private:
     float tubeHeatMeter = 0.f;
     float edgeHeatMeter = 0.f;
     float ironHeatMeter = 0.f;
+    float limiterGrDbMeter = 0.f;
     bool active = false;
     int numChannels = 2;
+    AuraBigVisualState visualState {};
 };

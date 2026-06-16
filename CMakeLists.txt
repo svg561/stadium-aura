@@ -84,6 +84,7 @@ if (BUILD_TESTING)
     target_sources(StadiumAuraTests PRIVATE
         Tests/DspTests.cpp
         Source/dsp/AuraProcessor.cpp
+        Source/dsp/AuraBigEngine.cpp
         Source/dsp/AuraCompressorEngine.cpp
         Source/dsp/EQBand.cpp
         Source/dsp/EQProcessor.cpp

@@ -58,6 +58,27 @@ public:
     std::atomic<float> auraBigTubeHeat { 0.f };
     std::atomic<float> auraBigEdgeHeat { 0.f };
     std::atomic<float> auraBigIronHeat { 0.f };
+    std::atomic<float> auraBigGlobalHeat { 0.f };
+    std::atomic<float> auraBigLimiterGrDb { 0.f };
+    std::atomic<bool> auraBigClipping { false };
+    std::atomic<float> auraBigStageIn { 0.f };
+    std::atomic<float> auraBigStageTone { 0.f };
+    std::atomic<float> auraBigStageTube { 0.f };
+    std::atomic<float> auraBigStageEdge { 0.f };
+    std::atomic<float> auraBigStageIron { 0.f };
+    std::atomic<float> auraBigStageDensity { 0.f };
+    std::atomic<float> auraBigStageAir { 0.f };
+    std::atomic<float> auraBigStageWidth { 0.f };
+    std::atomic<float> auraBigStageLimit { 0.f };
+    std::atomic<bool> auraBigBypassIn { false };
+    std::atomic<bool> auraBigBypassTone { false };
+    std::atomic<bool> auraBigBypassTube { false };
+    std::atomic<bool> auraBigBypassEdge { false };
+    std::atomic<bool> auraBigBypassIron { false };
+    std::atomic<bool> auraBigBypassDensity { false };
+    std::atomic<bool> auraBigBypassAir { false };
+    std::atomic<bool> auraBigBypassWidth { false };
+    std::atomic<bool> auraBigBypassLimit { false };
 
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     AnalyzerSnapshot getAnalyzerSnapshot() const noexcept;

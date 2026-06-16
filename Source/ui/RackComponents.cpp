@@ -524,6 +524,67 @@ void HeroAuraRing::paint (juce::Graphics& g)
     g.drawText ("SA", juce::Rectangle<float> (centre.x - 16.0f, centre.y - 16.0f, 32.0f, 32.0f).toNearestInt(), juce::Justification::centred);
 }
 
+void AuraBigHeatRing::paint (juce::Graphics& g)
+{
+    if (heat <= 0.001f)
+        return;
+
+    auto b = getLocalBounds().toFloat();
+    const auto centre = b.getCentre();
+    const auto radius = juce::jmin (b.getWidth(), b.getHeight()) * 0.5f - 2.0f;
+    const auto ringWidth = 2.5f + heat * 3.5f;
+    const auto alpha = 0.18f + heat * 0.72f;
+    const auto gold = juce::Colour (0xffc8962e).withAlpha (alpha);
+    const auto hot = juce::Colour (0xffff6b3a).withAlpha (alpha * 0.85f);
+    const auto ringColour = heat > 0.82f ? hot.interpolatedWith (gold, 0.35f) : gold;
+
+    g.setColour (ringColour.withAlpha (alpha * 0.35f));
+    g.fillEllipse (b.expanded (4.0f + heat * 6.0f));
+
+    juce::Path arc;
+    arc.addCentredArc (centre.x, centre.y, radius, radius, 0.0f,
+                       juce::MathConstants<float>::pi * 1.18f,
+                       juce::MathConstants<float>::pi * 2.82f, true);
+    g.setColour (ringColour);
+    g.strokePath (arc, juce::PathStrokeType (ringWidth, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+}
+
+AuraBigStageLed::AuraBigStageLed (juce::String stageLabel) : label (std::move (stageLabel)) {}
+
+void AuraBigStageLed::setState (float heatLevel, bool isBypassed, bool isHardClip) noexcept
+{
+    heat = juce::jlimit (0.0f, 1.0f, heatLevel);
+    bypassed = isBypassed;
+    hardClip = isHardClip;
+    repaint();
+}
+
+void AuraBigStageLed::paint (juce::Graphics& g)
+{
+    auto b = getLocalBounds();
+    const auto ledSize = juce::jmin (b.getWidth() - 2, 8);
+    auto led = juce::Rectangle<int> (b.getCentreX() - ledSize / 2, b.getY(), ledSize, ledSize);
+
+    juce::Colour ledColour (0xff4a4034);
+    if (hardClip)
+        ledColour = juce::Colour (0xffe04030);
+    else if (bypassed || heat <= 0.001f)
+        ledColour = juce::Colour (0xff3a342c);
+    else if (heat >= 0.85f)
+        ledColour = juce::Colour (0xffff7030);
+    else if (heat >= 0.60f)
+        ledColour = juce::Colour (0xffff9a2e);
+    else if (heat >= 0.20f)
+        ledColour = juce::Colour (0xffc8962e);
+
+    g.setColour (ledColour.withAlpha (bypassed ? 0.35f : 0.95f));
+    g.fillEllipse (led.toFloat());
+
+    g.setColour (juce::Colour (0xff8d806c));
+    g.setFont (juce::FontOptions (6.5f, juce::Font::bold));
+    g.drawText (label, b.withTrimmedTop (ledSize + 1), juce::Justification::centredTop);
+}
+
 HorizontalReductionMeter::HorizontalReductionMeter (juce::String titleText) : title (std::move (titleText))
 {
     startTimerHz (60);
