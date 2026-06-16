@@ -8,6 +8,7 @@
 #include "ui/RackComponents.h"
 #include "ui/RackMeter.h"
 #include "ui/EQPanel.h"
+#include "ui/ExpandedEQPanel.h"
 
 class StadiumAuraAudioProcessorEditor final : public juce::AudioProcessorEditor, private juce::Timer
 {
@@ -36,6 +37,8 @@ private:
     void updateEqDisplayState();
     void captureAbState (int slot);
     void restoreAbState (int slot);
+    void refreshCompressorProfileBar();
+    void updateCompressorControlVisibility();
     void layoutKnobRow (juce::Rectangle<int>& area, std::initializer_list<juce::Slider*> knobs);
     void layoutKnobGrid (juce::Rectangle<int>& area, int columns, std::initializer_list<juce::Slider*> knobs);
 
@@ -113,6 +116,48 @@ private:
     SegmentedChoiceBar trackButtons;
     SegmentedChoiceBar compModeButtons;
     SegmentedChoiceBar qualityBar;
+    SegmentedChoiceBar compModelBar;
+    SegmentedChoiceBar compProfileBar;
+
+    juce::ToggleButton compBypassBtn { "BYPASS" };
+    juce::ComboBox compTimingMode;
+    juce::ComboBox compScHpfMode;
+
+    PremiumKnob compMixKnob     { "MIX",  100.0, " %" };
+    PremiumKnob compDriveKnob   { "DRIVE", 0.0,  " %" };
+    PremiumKnob compDensityKnob { "DENS",  0.0,  " %" };
+    PremiumKnob compWarmthKnob  { "WARM",  0.0,  " %" };
+    PremiumKnob compOutputKnob  { "OUT",   0.0,  " dB" };
+    HorizontalReductionMeter compGrMeter { "COMP GR" };
+    juce::Label compTargetGrLabel;
+
+    // Legacy / auxiliary compressor controls
+    PremiumKnob compInputKnob    { "INPUT",  0.0,  " dB" };
+    PremiumKnob compSidechainKnob { "HPF",   90.0, " Hz" };
+
+    // Emotion Lock controls
+    juce::ToggleButton emotionLockBtn { "EMOTION LOCK" };
+    juce::Label        emotionLockStatusLabel;
+
+    // Aura Level controls
+    juce::ToggleButton auraLevelBtn { "AURA LEVEL" };
+    juce::Label        auraLevelStateLabel;
+
+    // Horizontal vintage VU meters (meter strip)
+    AuraHorizontalVUMeter inputVuMeter      { AuraHorizontalVUMeter::MeterMode::Input };
+    AuraHorizontalVUMeter grHorizontalMeter { AuraHorizontalVUMeter::MeterMode::GainReduction };
+    AuraHorizontalVUMeter outputVuMeter     { AuraHorizontalVUMeter::MeterMode::Output };
+
+    // Aura big label (above aura knob in hero panel)
+    juce::Label auraBigLabel;
+    AuraBigHeatRing auraHeatRing;
+    std::array<AuraBigStageLed, 9> auraBigStageLeds {{
+        AuraBigStageLed { "IN" }, AuraBigStageLed { "TONE" }, AuraBigStageLed { "TUBE" },
+        AuraBigStageLed { "EDGE" }, AuraBigStageLed { "IRON" }, AuraBigStageLed { "DENS" },
+        AuraBigStageLed { "AIR" }, AuraBigStageLed { "WID" }, AuraBigStageLed { "LIM" }
+    }};
+
+    std::unique_ptr<ExpandedEQPanel> expandedEQPanel;
 
     std::vector<std::unique_ptr<SliderAttachment>> sliderAttachments;
     std::vector<std::unique_ptr<ButtonAttachment>> buttonAttachments;
@@ -122,7 +167,8 @@ private:
     int activeAbSlot = 0;
     // Re-assert standalone unmute for the first ~2 s so the saved device state
     // cannot silently re-mute the input after the editor is constructed.
-    int startupUnmuteCountdown { 120 };
+    int startupUnmuteCountdown { 180 };  // 3 s at 60 Hz
+    bool startupAutoInputTriggered { false };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (StadiumAuraAudioProcessorEditor)
 };

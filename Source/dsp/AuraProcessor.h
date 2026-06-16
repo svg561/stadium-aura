@@ -104,6 +104,7 @@ public:
     float getAuraBigTubeHeat() const noexcept { return auraBigEngine.getTubeHeat(); }
     float getAuraBigEdgeHeat() const noexcept { return auraBigEngine.getEdgeHeat(); }
     float getAuraBigIronHeat() const noexcept { return auraBigEngine.getIronHeat(); }
+    AuraBigVisualState getAuraBigVisualState() const noexcept { return auraBigEngine.getVisualState(); }
     bool isAuraBigActive() const noexcept { return auraBigEngine.isActive(); }
 
 private:

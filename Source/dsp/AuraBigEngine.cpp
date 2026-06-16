@@ -42,6 +42,7 @@ void AuraBigEngine::prepare (double newSampleRate, int blockSize, int channelCou
     bodyGainSmoother.reset (sampleRate, 0.030);
     airGainSmoother.reset (sampleRate, 0.030);
     harshGainSmoother.reset (sampleRate, 0.030);
+    presenceAirGainSmoother.reset (sampleRate, 0.030);
 
     reset();
 }
@@ -58,6 +59,8 @@ void AuraBigEngine::reset()
     tubeHeatMeter = 0.f;
     edgeHeatMeter = 0.f;
     ironHeatMeter = 0.f;
+    limiterGrDbMeter = 0.f;
+    visualState = {};
 
     amountSmoother.setCurrentAndTargetValue (0.f);
     inputGainSmoother.setCurrentAndTargetValue (1.f);
@@ -65,6 +68,7 @@ void AuraBigEngine::reset()
     bodyGainSmoother.setCurrentAndTargetValue (0.f);
     airGainSmoother.setCurrentAndTargetValue (0.f);
     harshGainSmoother.setCurrentAndTargetValue (0.f);
+    presenceAirGainSmoother.setCurrentAndTargetValue (0.f);
 
     for (auto& band : toneZ1) band = { 0.f, 0.f };
     for (auto& band : toneZ2) band = { 0.f, 0.f };
@@ -72,10 +76,15 @@ void AuraBigEngine::reset()
     for (auto& band : transistorShelfZ2) band = { 0.f, 0.f };
     for (auto& band : transformerShelfZ1) band = { 0.f, 0.f };
     for (auto& band : transformerShelfZ2) band = { 0.f, 0.f };
+    for (auto& band : presenceAirZ1) band = { 0.f, 0.f };
+    for (auto& band : presenceAirZ2) band = { 0.f, 0.f };
+    for (auto& band : presenceBandZ1) band = { 0.f, 0.f };
+    for (auto& band : presenceBandZ2) band = { 0.f, 0.f };
     tubeDcState.fill (0.f);
     transformerHpfState.fill (0.f);
 
     setHighPass (subHpfCoefficients, 25.f);
+    setPeak (presenceBandCoefficients, 5200.f, 0.f, 1.1f);
     updateOnePoleCoefficients();
 }
 
@@ -126,6 +135,67 @@ void AuraBigEngine::updateSweetSpotState() noexcept
         sweetSpotState = SweetSpotState::TooLow;
     else
         sweetSpotState = SweetSpotState::TooLow;
+}
+
+float AuraBigEngine::measureBlockPeak (const juce::AudioBuffer<float>& buffer) const noexcept
+{
+    const auto numSamples = buffer.getNumSamples();
+    if (numSamples <= 0)
+        return 0.f;
+
+    float peak = 0.f;
+    const auto channels = juce::jmin (buffer.getNumChannels(), numChannels);
+
+    for (int channel = 0; channel < channels; ++channel)
+    {
+        const auto* data = buffer.getReadPointer (channel);
+        for (int i = 0; i < numSamples; ++i)
+            peak = juce::jmax (peak, std::abs (data[i]));
+    }
+
+    return juce::jlimit (0.f, 1.f, peak);
+}
+
+float AuraBigEngine::measurePresenceBandPeak (const juce::AudioBuffer<float>& buffer) const noexcept
+{
+    const auto numSamples = buffer.getNumSamples();
+    if (numSamples <= 0)
+        return 0.f;
+
+    float peak = 0.f;
+    const auto channels = juce::jmin (buffer.getNumChannels(), numChannels);
+
+    for (int channel = 0; channel < channels; ++channel)
+    {
+        const auto ch = static_cast<size_t> (channel);
+        auto z1 = presenceBandZ1[ch][0];
+        auto z2 = presenceBandZ2[ch][0];
+
+        const auto* data = buffer.getReadPointer (channel);
+        for (int i = 0; i < numSamples; ++i)
+        {
+            const auto filtered = processBiquad (data[i], z1, z2, presenceBandCoefficients);
+            peak = juce::jmax (peak, std::abs (filtered));
+        }
+    }
+
+    return juce::jlimit (0.f, 1.f, peak);
+}
+
+void AuraBigEngine::updateGlobalVisualHeat (float amount) noexcept
+{
+    const float stageMax = juce::jmax (visualState.stageIn,
+                                       juce::jmax (visualState.stageTone,
+                                       juce::jmax (visualState.stageTube,
+                                       juce::jmax (visualState.stageEdge,
+                                       juce::jmax (visualState.stageIron,
+                                       juce::jmax (visualState.stageDensity,
+                                       juce::jmax (visualState.stageAir,
+                                       juce::jmax (visualState.stageWidth, visualState.stageLimit))))))));
+    const float heatMeters = juce::jmax (tubeHeatMeter, juce::jmax (edgeHeatMeter, ironHeatMeter));
+    visualState.globalHeat = juce::jlimit (0.f, 1.f, juce::jmax (stageMax * amount, heatMeters));
+    visualState.limiterGrDb = limiterGrDbMeter;
+    visualState.clipping = sweetSpotState == SweetSpotState::Clipping || inputPeakDb > -0.5f;
 }
 
 float AuraBigEngine::processBiquad (float input, float& z1, float& z2,
@@ -216,11 +286,13 @@ void AuraBigEngine::updateToneCoefficients (float bodyDb, float airDb, float har
 
 void AuraBigEngine::processInputTrim (juce::AudioBuffer<float>& buffer,
                                       const AuraBigParams& params,
+                                      float amount,
                                       int numSamples) noexcept
 {
     if (params.inputBypass)
     {
         inputGainSmoother.skip (numSamples);
+        visualState.stageIn = 0.f;
         return;
     }
 
@@ -233,6 +305,10 @@ void AuraBigEngine::processInputTrim (juce::AudioBuffer<float>& buffer,
         for (int channel = 0; channel < channels; ++channel)
             buffer.setSample (channel, i, buffer.getSample (channel, i) * gain);
     }
+
+    const auto peak = measureBlockPeak (buffer);
+    const auto trimActivity = juce::jlimit (0.f, 1.f, std::abs (params.inputDb) / 12.f);
+    visualState.stageIn = juce::jlimit (0.f, 1.f, amount * trimActivity * (0.35f + peak * 0.65f));
 }
 
 void AuraBigEngine::processToneLift (juce::AudioBuffer<float>& buffer,
@@ -240,7 +316,10 @@ void AuraBigEngine::processToneLift (juce::AudioBuffer<float>& buffer,
                                      float amount) noexcept
 {
     if (params.toneBypass || amount <= 0.001f)
+    {
+        visualState.stageTone = 0.f;
         return;
+    }
 
     const float toneAmt = amount * params.tone;
     const float bodyLiftDb = toneAmt * 3.0f;
@@ -291,6 +370,9 @@ void AuraBigEngine::processToneLift (juce::AudioBuffer<float>& buffer,
             buffer.setSample (channel, i, sample);
         }
     }
+
+    const auto peak = measureBlockPeak (buffer);
+    visualState.stageTone = juce::jlimit (0.f, 1.f, amount * params.tone * (0.3f + peak * 0.7f));
 }
 
 void AuraBigEngine::processTubeWarmth (juce::AudioBuffer<float>& buffer,
@@ -298,7 +380,10 @@ void AuraBigEngine::processTubeWarmth (juce::AudioBuffer<float>& buffer,
                                        float amount) noexcept
 {
     if (params.globalBypass || params.tubeBypass || amount <= kNearZero || params.tube <= kNearZero)
+    {
+        visualState.stageTube = 0.f;
         return;
+    }
 
     const float tubeDrive = amount * params.tube * 1.0f;
     const float drive = 1.0f + tubeDrive * 2.5f;
@@ -323,6 +408,7 @@ void AuraBigEngine::processTubeWarmth (juce::AudioBuffer<float>& buffer,
     }
 
     tubeHeatMeter = juce::jmax (tubeHeatMeter * 0.90f, juce::jlimit (0.f, 1.f, blockHeat));
+    visualState.stageTube = juce::jlimit (0.f, 1.f, juce::jmax (tubeHeatMeter, amount * params.tube * blockHeat));
 }
 
 void AuraBigEngine::processTransistorEdge (juce::AudioBuffer<float>& buffer,
@@ -330,7 +416,10 @@ void AuraBigEngine::processTransistorEdge (juce::AudioBuffer<float>& buffer,
                                            float amount) noexcept
 {
     if (params.globalBypass || params.transistorBypass || amount <= kNearZero || params.transistor <= kNearZero)
+    {
+        visualState.stageEdge = 0.f;
         return;
+    }
 
     const float transistorDrive = amount * params.transistor * 0.75f;
     const float drive = 1.0f + transistorDrive * 1.8f;
@@ -358,6 +447,7 @@ void AuraBigEngine::processTransistorEdge (juce::AudioBuffer<float>& buffer,
     }
 
     edgeHeatMeter = juce::jmax (edgeHeatMeter * 0.90f, juce::jlimit (0.f, 1.f, blockHeat));
+    visualState.stageEdge = juce::jlimit (0.f, 1.f, juce::jmax (edgeHeatMeter, amount * params.transistor * blockHeat));
 }
 
 void AuraBigEngine::processTransformerWeight (juce::AudioBuffer<float>& buffer,
@@ -365,7 +455,10 @@ void AuraBigEngine::processTransformerWeight (juce::AudioBuffer<float>& buffer,
                                               float amount) noexcept
 {
     if (params.globalBypass || params.transformerBypass || amount <= kNearZero || params.transformer <= kNearZero)
+    {
+        visualState.stageIron = 0.f;
         return;
+    }
 
     const float transformerDrive = amount * params.transformer * 0.85f;
     const float shelfDb = juce::jmin (transformerDrive * 2.0f, 2.0f);
@@ -396,6 +489,7 @@ void AuraBigEngine::processTransformerWeight (juce::AudioBuffer<float>& buffer,
     }
 
     ironHeatMeter = juce::jmax (ironHeatMeter * 0.90f, juce::jlimit (0.f, 1.f, blockHeat));
+    visualState.stageIron = juce::jlimit (0.f, 1.f, juce::jmax (ironHeatMeter, amount * params.transformer * blockHeat));
 }
 
 void AuraBigEngine::processVocalDensity (juce::AudioBuffer<float>& buffer,
@@ -403,7 +497,10 @@ void AuraBigEngine::processVocalDensity (juce::AudioBuffer<float>& buffer,
                                          float amount) noexcept
 {
     if (params.globalBypass || params.densityBypass || amount <= kNearZero || params.density <= kNearZero)
+    {
+        visualState.stageDensity = 0.f;
         return;
+    }
 
     const float densityBlend = juce::jmin (amount * params.density * 0.35f, 0.35f);
     const auto channels = juce::jmin (buffer.getNumChannels(), stageDryBuffer.getNumChannels(), numChannels);
@@ -423,16 +520,104 @@ void AuraBigEngine::processVocalDensity (juce::AudioBuffer<float>& buffer,
             buffer.setSample (channel, i, sanitizeSample (wet));
         }
     }
+
+    const auto peak = measureBlockPeak (buffer);
+    visualState.stageDensity = juce::jlimit (0.f, 1.f, amount * params.density * (0.25f + peak * 0.75f));
 }
 
-void AuraBigEngine::processPlaceholderStages (const AuraBigParams& params) noexcept
+void AuraBigEngine::processAirPresence (juce::AudioBuffer<float>& buffer,
+                                        const AuraBigParams& params,
+                                        float amount) noexcept
 {
-    juce::ignoreUnused (params.air, params.width);
+    if (params.airBypass || amount <= kNearZero || params.air <= kNearZero)
+    {
+        presenceAirGainSmoother.setTargetValue (0.f);
+        visualState.stageAir = 0.f;
+        return;
+    }
 
-    if (params.airBypass || params.globalBypass)
-        { /* pass-through */ }
-    if (params.widthBypass || params.globalBypass)
-        { /* pass-through */ }
+    const float presencePeak = measurePresenceBandPeak (buffer);
+    float harshGuard = 1.0f;
+
+    if (presencePeak > 0.30f)
+        harshGuard -= juce::jmin (0.5f, (presencePeak - 0.30f) * 1.25f);
+
+    if (std::abs (harshGainSmoother.getCurrentValue()) > 0.05f)
+        harshGuard -= 0.5f * juce::jmin (1.f, std::abs (harshGainSmoother.getCurrentValue()) / 2.0f);
+
+    harshGuard = juce::jmax (0.5f, harshGuard);
+
+    const float airLiftDb = amount * params.air * 4.0f * harshGuard;
+    presenceAirGainSmoother.setTargetValue (airLiftDb);
+    setHighShelf (presenceAirShelfCoefficients, 11000.f, presenceAirGainSmoother.getCurrentValue());
+    presenceAirGainSmoother.skip (1);
+
+    const auto channels = juce::jmin (buffer.getNumChannels(), numChannels);
+    const auto numSamples = buffer.getNumSamples();
+
+    for (int i = 0; i < numSamples; ++i)
+    {
+        if ((i & 63) == 0)
+        {
+            setHighShelf (presenceAirShelfCoefficients, 11000.f, presenceAirGainSmoother.getNextValue());
+        }
+        else
+        {
+            presenceAirGainSmoother.skip (1);
+        }
+
+        for (int channel = 0; channel < channels; ++channel)
+        {
+            auto sample = buffer.getSample (channel, i);
+            sample = processBiquad (sample, presenceAirZ1[static_cast<size_t> (channel)][0],
+                                    presenceAirZ2[static_cast<size_t> (channel)][0],
+                                    presenceAirShelfCoefficients);
+            buffer.setSample (channel, i, sanitizeSample (sample));
+        }
+    }
+
+    const auto peak = measureBlockPeak (buffer);
+    visualState.stageAir = juce::jlimit (0.f, 1.f, amount * params.air * (0.3f + peak * 0.7f));
+}
+
+void AuraBigEngine::processSubtleWidth (juce::AudioBuffer<float>& buffer,
+                                        const AuraBigParams& params,
+                                        float amount) noexcept
+{
+    if (params.widthBypass || amount <= kNearZero || params.width <= kNearZero
+        || buffer.getNumChannels() < 2)
+    {
+        visualState.stageWidth = 0.f;
+        return;
+    }
+
+    const float widthAmount = amount * params.width;
+    const float sideGain = 1.0f + widthAmount;
+    const auto numSamples = buffer.getNumSamples();
+    auto* left = buffer.getWritePointer (0);
+    auto* right = buffer.getWritePointer (1);
+    float blockPeak = 0.f;
+
+    for (int i = 0; i < numSamples; ++i)
+    {
+        const float mid = (left[i] + right[i]) * 0.5f;
+        const float side = (left[i] - right[i]) * 0.5f;
+        left[i] = sanitizeSample (mid + side * sideGain);
+        right[i] = sanitizeSample (mid - side * sideGain);
+        blockPeak = juce::jmax (blockPeak, std::abs (left[i]), std::abs (right[i]));
+    }
+
+    if (blockPeak > 0.95f)
+    {
+        const float norm = 0.95f / blockPeak;
+        for (int i = 0; i < numSamples; ++i)
+        {
+            left[i] = sanitizeSample (left[i] * norm);
+            right[i] = sanitizeSample (right[i] * norm);
+        }
+    }
+
+    visualState.stageWidth = juce::jlimit (0.f, 1.f, widthAmount * (0.4f + blockPeak * 0.6f));
 }
 
 void AuraBigEngine::processAdaptiveLimiter (juce::AudioBuffer<float>& buffer,
@@ -441,7 +626,11 @@ void AuraBigEngine::processAdaptiveLimiter (juce::AudioBuffer<float>& buffer,
 {
     const bool emergencyOnly = params.safe && params.limiterBypass;
     if (params.limiterBypass && ! params.safe)
+    {
+        visualState.stageLimit = 0.f;
+        limiterGrDbMeter = 0.f;
         return;
+    }
 
     const float ceilingDb = emergencyOnly ? kEmergencyCeilingDb : kDefaultLimiterCeilingDb;
     const float ceiling = juce::Decibels::decibelsToGain (ceilingDb);
@@ -449,6 +638,7 @@ void AuraBigEngine::processAdaptiveLimiter (juce::AudioBuffer<float>& buffer,
     const float releaseMs = juce::jmap (strength, 120.f, 25.f);
     const float releaseCoeff = std::exp (-1.0f / (releaseMs * 0.001f * static_cast<float> (sampleRate)));
     const auto channels = juce::jmin (buffer.getNumChannels(), numChannels);
+    float blockGrDb = 0.f;
 
     for (int i = 0; i < numSamples; ++i)
     {
@@ -468,9 +658,15 @@ void AuraBigEngine::processAdaptiveLimiter (juce::AudioBuffer<float>& buffer,
         }
 
         const float appliedGain = juce::jmap (strength, 1.f, limiterGain);
+        blockGrDb = juce::jmin (blockGrDb, juce::Decibels::gainToDecibels (appliedGain, -60.f));
+
         for (int channel = 0; channel < channels; ++channel)
             buffer.setSample (channel, i, buffer.getSample (channel, i) * appliedGain);
     }
+
+    limiterGrDbMeter = juce::jmin (limiterGrDbMeter * 0.88f, blockGrDb);
+    visualState.stageLimit = juce::jlimit (0.f, 1.f,
+        params.amount * strength * juce::jlimit (0.f, 1.f, -limiterGrDbMeter / 12.f));
 }
 
 void AuraBigEngine::processOutputTrim (juce::AudioBuffer<float>& buffer,
@@ -529,11 +725,24 @@ void AuraBigEngine::process (juce::AudioBuffer<float>& buffer, const AuraBigPara
         bodyGainSmoother.skip (numSamples);
         airGainSmoother.skip (numSamples);
         harshGainSmoother.skip (numSamples);
+        presenceAirGainSmoother.skip (numSamples);
         tubeHeatMeter = 0.f;
         edgeHeatMeter = 0.f;
         ironHeatMeter = 0.f;
+        limiterGrDbMeter = 0.f;
+        visualState = {};
         return;
     }
+
+    visualState.bypassIn = params.inputBypass;
+    visualState.bypassTone = params.toneBypass;
+    visualState.bypassTube = params.tubeBypass;
+    visualState.bypassEdge = params.transistorBypass;
+    visualState.bypassIron = params.transformerBypass;
+    visualState.bypassDensity = params.densityBypass;
+    visualState.bypassAir = params.airBypass;
+    visualState.bypassWidth = params.widthBypass;
+    visualState.bypassLimit = params.limiterBypass;
 
     const auto channels = juce::jmin (buffer.getNumChannels(), dryBuffer.getNumChannels(), numChannels);
     for (int channel = 0; channel < channels; ++channel)
@@ -541,14 +750,16 @@ void AuraBigEngine::process (juce::AudioBuffer<float>& buffer, const AuraBigPara
 
     const float blockAmount = juce::jlimit (0.f, 1.f, params.amount);
 
-    processInputTrim (buffer, params, numSamples);
+    processInputTrim (buffer, params, blockAmount, numSamples);
     processToneLift (buffer, params, blockAmount);
     processTubeWarmth (buffer, params, blockAmount);
     processTransistorEdge (buffer, params, blockAmount);
     processTransformerWeight (buffer, params, blockAmount);
     processVocalDensity (buffer, params, blockAmount);
-    processPlaceholderStages (params);
+    processAirPresence (buffer, params, blockAmount);
+    processSubtleWidth (buffer, params, blockAmount);
     processAdaptiveLimiter (buffer, params, numSamples);
     processOutputTrim (buffer, params, numSamples);
     blendWithDry (buffer, numSamples);
+    updateGlobalVisualHeat (blockAmount);
 }

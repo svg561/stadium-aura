@@ -139,6 +139,28 @@ private:
     float value = 50.0f;
 };
 
+class AuraBigHeatRing final : public juce::Component
+{
+public:
+    void setHeat (float heatLevel) noexcept { heat = juce::jlimit (0.0f, 1.0f, heatLevel); repaint(); }
+    void paint (juce::Graphics&) override;
+private:
+    float heat = 0.0f;
+};
+
+class AuraBigStageLed final : public juce::Component
+{
+public:
+    explicit AuraBigStageLed (juce::String stageLabel);
+    void setState (float heatLevel, bool bypassed, bool hardClip) noexcept;
+    void paint (juce::Graphics&) override;
+private:
+    juce::String label;
+    float heat = 0.0f;
+    bool bypassed = false;
+    bool hardClip = false;
+};
+
 class HorizontalReductionMeter final : public juce::Component, private juce::Timer
 {
 public:
