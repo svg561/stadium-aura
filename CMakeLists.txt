@@ -49,6 +49,7 @@ target_sources(StadiumAura PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
     Source/dsp/AuraProcessor.cpp
+    Source/dsp/AuraBigEngine.cpp
     Source/dsp/AuraCompressorEngine.cpp
     Source/dsp/EQBand.cpp
     Source/dsp/EQProcessor.cpp

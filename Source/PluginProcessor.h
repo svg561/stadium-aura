@@ -52,6 +52,9 @@ public:
     std::atomic<float> tubeActivityMeter { 0.0f };
     std::atomic<float> newCompGainReduction { 0.0f };
     std::atomic<float> newCompTargetGr { 0.0f };
+    std::atomic<int> auraBigSweetSpotState { 0 };
+    std::atomic<float> auraBigInputRmsDb { -60.f };
+    std::atomic<float> auraBigInputPeakDb { -60.f };
 
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     AnalyzerSnapshot getAnalyzerSnapshot() const noexcept;

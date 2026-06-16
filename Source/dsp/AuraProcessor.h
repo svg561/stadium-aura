@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "AuraBigEngine.h"
 #include "AuraCompressorEngine.h"
 #include "CompressorSection.h"
 #include "EQProcessor.h"
@@ -76,7 +77,9 @@ struct AuraParameters
     bool harmonicsSectionEnabled = true;
     bool sumSectionEnabled = true;
     bool masterSectionEnabled = true;
+    bool eqGlobalBypass = false;
     std::array<EQBandState, 24> eqBands {};
+    AuraBigParams auraBigParams;
 
     // New compressor engine parameters
     CompressorParams compressorParams;
@@ -95,6 +98,10 @@ public:
     int   getLatencySamples() const noexcept { return limiter.getLatencySamples(); }
     float getNewCompressorGainReductionDb() const noexcept { return compressorEngine.getGainReductionDb(); }
     float getNewCompressorTargetGrDb() const noexcept { return compressorEngine.getTargetGrDb(); }
+    SweetSpotState getAuraBigSweetSpotState() const noexcept { return auraBigEngine.getSweetSpotState(); }
+    float getAuraBigInputRmsDb() const noexcept { return auraBigEngine.getInputRmsDb(); }
+    float getAuraBigInputPeakDb() const noexcept { return auraBigEngine.getInputPeakDb(); }
+    bool isAuraBigActive() const noexcept { return auraBigEngine.isActive(); }
 
 private:
     struct MacroValues
@@ -124,6 +131,7 @@ private:
     juce::AudioBuffer<float> dryBuffer;
     juce::AudioBuffer<float> bypassDelayBuffer;
     AuraCompressorEngine compressorEngine;
+    AuraBigEngine auraBigEngine;
     EQProcessor eqProcessor;
     TransformerColor transformer;
     TransformerColor transformerHigh;

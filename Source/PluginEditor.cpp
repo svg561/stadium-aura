@@ -870,8 +870,27 @@ void StadiumAuraAudioProcessorEditor::timerCallback()
 
     const auto hot = lim > 0.8f || gr > 10.0f || out > 0.94f || tubeLevel > 0.88f;
     const auto sweet = ! hot && in > 0.08f && (gr > 0.5f || drive > 18.0f) && out < 0.94f;
-    sweetZone.setText (sweet ? "SWEET" : " ", juce::dontSendNotification);
-    sweetZone.setColour (juce::Label::textColourId, sweet ? juce::Colour (0xffffc15b) : juce::Colour (0x00000000));
-    sweetLow.setColour (juce::Label::textColourId, ! sweet && ! hot ? juce::Colour (0xff8d806c) : juce::Colour (0xff4d463c));
-    sweetHot.setColour (juce::Label::textColourId, hot ? juce::Colour (0xffff6b3a) : juce::Colour (0xff4d463c));
+
+    const float auraBigAmount = processorRef.apvts.getRawParameterValue ("AURA_BIG_AMOUNT")->load();
+    const bool useAuraBigSweetSpot = auraBigAmount > 0.001f
+        && processorRef.apvts.getRawParameterValue ("AURA_BIG_BYPASS")->load() <= 0.5f;
+
+    if (useAuraBigSweetSpot)
+    {
+        const auto state = processorRef.auraBigSweetSpotState.load (std::memory_order_relaxed);
+        const bool sweetSpot = state == 1;
+        const bool hotSpot = state == 2;
+        const bool clipping = state == 3;
+        sweetZone.setText (sweetSpot ? "SWEET" : " ", juce::dontSendNotification);
+        sweetZone.setColour (juce::Label::textColourId, sweetSpot ? juce::Colour (0xffffc15b) : juce::Colour (0x00000000));
+        sweetLow.setColour (juce::Label::textColourId, state == 0 ? juce::Colour (0xff8d806c) : juce::Colour (0xff4d463c));
+        sweetHot.setColour (juce::Label::textColourId, (hotSpot || clipping) ? juce::Colour (0xffff6b3a) : juce::Colour (0xff4d463c));
+    }
+    else
+    {
+        sweetZone.setText (sweet ? "SWEET" : " ", juce::dontSendNotification);
+        sweetZone.setColour (juce::Label::textColourId, sweet ? juce::Colour (0xffffc15b) : juce::Colour (0x00000000));
+        sweetLow.setColour (juce::Label::textColourId, ! sweet && ! hot ? juce::Colour (0xff8d806c) : juce::Colour (0xff4d463c));
+        sweetHot.setColour (juce::Label::textColourId, hot ? juce::Colour (0xffff6b3a) : juce::Colour (0xff4d463c));
+    }
 }

@@ -43,6 +43,29 @@ constexpr auto preampSectionEnable = "preampSectionEnable";
 constexpr auto harmonicsSectionEnable = "harmonicsSectionEnable";
 constexpr auto sumSectionEnable = "sumSectionEnable";
 constexpr auto masterSectionEnable = "masterSectionEnable";
+constexpr auto auraBigBypass = "AURA_BIG_BYPASS";
+constexpr auto auraBigAmount = "AURA_BIG_AMOUNT";
+constexpr auto auraBigInput = "AURA_BIG_INPUT";
+constexpr auto auraBigOutput = "AURA_BIG_OUTPUT";
+constexpr auto auraBigTone = "AURA_BIG_TONE";
+constexpr auto auraBigTube = "AURA_BIG_TUBE";
+constexpr auto auraBigTransistor = "AURA_BIG_TRANSISTOR";
+constexpr auto auraBigTransformer = "AURA_BIG_TRANSFORMER";
+constexpr auto auraBigDensity = "AURA_BIG_DENSITY";
+constexpr auto auraBigAir = "AURA_BIG_AIR";
+constexpr auto auraBigWidth = "AURA_BIG_WIDTH";
+constexpr auto auraBigLimiter = "AURA_BIG_LIMITER";
+constexpr auto auraBigSafe = "AURA_BIG_SAFE";
+constexpr auto auraBigInputBypass = "AURA_BIG_INPUT_BYPASS";
+constexpr auto auraBigToneBypass = "AURA_BIG_TONE_BYPASS";
+constexpr auto auraBigTubeBypass = "AURA_BIG_TUBE_BYPASS";
+constexpr auto auraBigTransistorBypass = "AURA_BIG_TRANSISTOR_BYPASS";
+constexpr auto auraBigTransformerBypass = "AURA_BIG_TRANSFORMER_BYPASS";
+constexpr auto auraBigDensityBypass = "AURA_BIG_DENSITY_BYPASS";
+constexpr auto auraBigAirBypass = "AURA_BIG_AIR_BYPASS";
+constexpr auto auraBigWidthBypass = "AURA_BIG_WIDTH_BYPASS";
+constexpr auto auraBigLimiterBypass = "AURA_BIG_LIMITER_BYPASS";
+constexpr auto eqGlobalBypass = "EQ_GLOBAL_BYPASS";
 }
 
 StadiumAuraAudioProcessor::StadiumAuraAudioProcessor()
@@ -234,7 +257,42 @@ juce::AudioProcessorValueTreeState::ParameterLayout StadiumAuraAudioProcessor::c
         juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.5f));
 
     // Global EQ bypass (visual + audio passthrough flag for the expanded EQ panel)
-    layout.add (std::make_unique<Bool> ("EQ_GLOBAL_BYPASS", "EQ Global Bypass", false));
+    layout.add (std::make_unique<Bool> (Param::eqGlobalBypass, "EQ Global Bypass", false));
+
+    // ── AURA BIG parameters ──────────────────────────────────────────────────────
+    layout.add (std::make_unique<Bool>   (Param::auraBigBypass, "AURA BIG Bypass", false));
+    layout.add (std::make_unique<Float>  (Param::auraBigAmount, "AURA BIG Amount",
+        juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.0f));
+    layout.add (std::make_unique<Float>  (Param::auraBigInput, "AURA BIG Input",
+        juce::NormalisableRange<float> (-12.0f, 12.0f, 0.01f), 0.0f, "dB", juce::AudioProcessorParameter::genericParameter, db));
+    layout.add (std::make_unique<Float>  (Param::auraBigOutput, "AURA BIG Output",
+        juce::NormalisableRange<float> (-12.0f, 12.0f, 0.01f), 0.0f, "dB", juce::AudioProcessorParameter::genericParameter, db));
+    layout.add (std::make_unique<Float>  (Param::auraBigTone, "AURA BIG Tone",
+        juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.35f));
+    layout.add (std::make_unique<Float>  (Param::auraBigTube, "AURA BIG Tube",
+        juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.35f));
+    layout.add (std::make_unique<Float>  (Param::auraBigTransistor, "AURA BIG Transistor",
+        juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.20f));
+    layout.add (std::make_unique<Float>  (Param::auraBigTransformer, "AURA BIG Transformer",
+        juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.30f));
+    layout.add (std::make_unique<Float>  (Param::auraBigDensity, "AURA BIG Density",
+        juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.40f));
+    layout.add (std::make_unique<Float>  (Param::auraBigAir, "AURA BIG Air",
+        juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.30f));
+    layout.add (std::make_unique<Float>  (Param::auraBigWidth, "AURA BIG Width",
+        juce::NormalisableRange<float> (0.0f, 0.35f, 0.001f), 0.12f));
+    layout.add (std::make_unique<Float>  (Param::auraBigLimiter, "AURA BIG Limiter",
+        juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.50f));
+    layout.add (std::make_unique<Bool>   (Param::auraBigSafe, "AURA BIG Safe", true));
+    layout.add (std::make_unique<Bool>   (Param::auraBigInputBypass, "AURA BIG Input Bypass", false));
+    layout.add (std::make_unique<Bool>   (Param::auraBigToneBypass, "AURA BIG Tone Bypass", false));
+    layout.add (std::make_unique<Bool>   (Param::auraBigTubeBypass, "AURA BIG Tube Bypass", false));
+    layout.add (std::make_unique<Bool>   (Param::auraBigTransistorBypass, "AURA BIG Transistor Bypass", false));
+    layout.add (std::make_unique<Bool>   (Param::auraBigTransformerBypass, "AURA BIG Transformer Bypass", false));
+    layout.add (std::make_unique<Bool>   (Param::auraBigDensityBypass, "AURA BIG Density Bypass", false));
+    layout.add (std::make_unique<Bool>   (Param::auraBigAirBypass, "AURA BIG Air Bypass", false));
+    layout.add (std::make_unique<Bool>   (Param::auraBigWidthBypass, "AURA BIG Width Bypass", false));
+    layout.add (std::make_unique<Bool>   (Param::auraBigLimiterBypass, "AURA BIG Limiter Bypass", false));
 
     return layout;
 }
@@ -291,6 +349,9 @@ void StadiumAuraAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, 
     }
 
     auraProcessor.process (buffer, readParameters());
+    auraBigSweetSpotState.store (static_cast<int> (auraProcessor.getAuraBigSweetSpotState()), std::memory_order_relaxed);
+    auraBigInputRmsDb.store (auraProcessor.getAuraBigInputRmsDb(), std::memory_order_relaxed);
+    auraBigInputPeakDb.store (auraProcessor.getAuraBigInputPeakDb(), std::memory_order_relaxed);
     outputMeter.store (peakForBuffer (buffer), std::memory_order_relaxed);
     outputLeftMeter.store (peakForChannel (buffer, 0), std::memory_order_relaxed);
     outputRightMeter.store (peakForChannel (buffer, juce::jmin (1, buffer.getNumChannels() - 1)), std::memory_order_relaxed);
@@ -424,6 +485,32 @@ AuraParameters StadiumAuraAudioProcessor::readParameters() const noexcept
     p.compressorParams.emotionLock.harshTame       = get ("EMOTION_LOCK_HARSH_TAME");
     p.compressorParams.emotionLock.pocketLock      = get ("EMOTION_LOCK_POCKET_LOCK");
     p.compressorParams.emotionLock.intensity       = get ("EMOTION_LOCK_INTENSITY");
+
+    p.eqGlobalBypass = get (Param::eqGlobalBypass) > 0.5f;
+
+    auto& ab = p.auraBigParams;
+    ab.globalBypass       = get (Param::auraBigBypass) > 0.5f;
+    ab.amount             = get (Param::auraBigAmount);
+    ab.inputDb            = get (Param::auraBigInput);
+    ab.outputDb           = get (Param::auraBigOutput);
+    ab.tone               = get (Param::auraBigTone);
+    ab.tube               = get (Param::auraBigTube);
+    ab.transistor         = get (Param::auraBigTransistor);
+    ab.transformer        = get (Param::auraBigTransformer);
+    ab.density            = get (Param::auraBigDensity);
+    ab.air                = get (Param::auraBigAir);
+    ab.width              = get (Param::auraBigWidth);
+    ab.limiter            = get (Param::auraBigLimiter);
+    ab.safe               = get (Param::auraBigSafe) > 0.5f;
+    ab.inputBypass        = get (Param::auraBigInputBypass) > 0.5f;
+    ab.toneBypass         = get (Param::auraBigToneBypass) > 0.5f;
+    ab.tubeBypass         = get (Param::auraBigTubeBypass) > 0.5f;
+    ab.transistorBypass   = get (Param::auraBigTransistorBypass) > 0.5f;
+    ab.transformerBypass  = get (Param::auraBigTransformerBypass) > 0.5f;
+    ab.densityBypass      = get (Param::auraBigDensityBypass) > 0.5f;
+    ab.airBypass          = get (Param::auraBigAirBypass) > 0.5f;
+    ab.widthBypass        = get (Param::auraBigWidthBypass) > 0.5f;
+    ab.limiterBypass      = get (Param::auraBigLimiterBypass) > 0.5f;
 
     return p;
 }
