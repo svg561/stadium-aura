@@ -4,6 +4,29 @@ namespace
 {
 constexpr float kDefaultLimiterCeilingDb = -0.6f;
 constexpr float kEmergencyCeilingDb = -0.3f;
+constexpr float kNearZero = 0.001f;
+
+float softSaturate (float x) noexcept
+{
+    if (! std::isfinite (x))
+        return 0.f;
+
+    return std::tanh (x);
+}
+
+float sanitizeSample (float sample) noexcept
+{
+    if (! std::isfinite (sample))
+        sample = 0.f;
+
+    return juce::jlimit (-2.f, 2.f, sample);
+}
+
+float onePoleHighPass (float input, float& state, float coeff) noexcept
+{
+    state += coeff * (input - state);
+    return input - state;
+}
 }
 
 void AuraBigEngine::prepare (double newSampleRate, int blockSize, int channelCount)
@@ -11,6 +34,7 @@ void AuraBigEngine::prepare (double newSampleRate, int blockSize, int channelCou
     sampleRate = newSampleRate;
     numChannels = juce::jmax (1, channelCount);
     dryBuffer.setSize (numChannels, juce::jmax (1, blockSize), false, false, true);
+    stageDryBuffer.setSize (numChannels, juce::jmax (1, blockSize), false, false, true);
 
     amountSmoother.reset (sampleRate, 0.050);
     inputGainSmoother.reset (sampleRate, 0.020);
@@ -30,6 +54,10 @@ void AuraBigEngine::reset()
     active = false;
     limiterGain = 1.f;
     dryBuffer.clear();
+    stageDryBuffer.clear();
+    tubeHeatMeter = 0.f;
+    edgeHeatMeter = 0.f;
+    ironHeatMeter = 0.f;
 
     amountSmoother.setCurrentAndTargetValue (0.f);
     inputGainSmoother.setCurrentAndTargetValue (1.f);
@@ -40,8 +68,23 @@ void AuraBigEngine::reset()
 
     for (auto& band : toneZ1) band = { 0.f, 0.f };
     for (auto& band : toneZ2) band = { 0.f, 0.f };
+    for (auto& band : transistorShelfZ1) band = { 0.f, 0.f };
+    for (auto& band : transistorShelfZ2) band = { 0.f, 0.f };
+    for (auto& band : transformerShelfZ1) band = { 0.f, 0.f };
+    for (auto& band : transformerShelfZ2) band = { 0.f, 0.f };
+    tubeDcState.fill (0.f);
+    transformerHpfState.fill (0.f);
 
     setHighPass (subHpfCoefficients, 25.f);
+    updateOnePoleCoefficients();
+}
+
+void AuraBigEngine::updateOnePoleCoefficients() noexcept
+{
+    tubeDcCoeff = 1.f - std::exp (-juce::MathConstants<float>::twoPi * 18.f
+                                 / static_cast<float> (sampleRate));
+    transformerHpfCoeff = 1.f - std::exp (-juce::MathConstants<float>::twoPi * 30.f
+                                           / static_cast<float> (sampleRate));
 }
 
 void AuraBigEngine::measureInput (const juce::AudioBuffer<float>& buffer) noexcept
@@ -250,19 +293,142 @@ void AuraBigEngine::processToneLift (juce::AudioBuffer<float>& buffer,
     }
 }
 
+void AuraBigEngine::processTubeWarmth (juce::AudioBuffer<float>& buffer,
+                                       const AuraBigParams& params,
+                                       float amount) noexcept
+{
+    if (params.globalBypass || params.tubeBypass || amount <= kNearZero || params.tube <= kNearZero)
+        return;
+
+    const float tubeDrive = amount * params.tube * 1.0f;
+    const float drive = 1.0f + tubeDrive * 2.5f;
+    const float asym = tubeDrive * 0.018f;
+    const float compensation = 1.0f / (1.0f + tubeDrive * 0.35f);
+    const auto channels = juce::jmin (buffer.getNumChannels(), numChannels);
+    const auto numSamples = buffer.getNumSamples();
+    float blockHeat = 0.f;
+
+    for (int i = 0; i < numSamples; ++i)
+    {
+        for (int channel = 0; channel < channels; ++channel)
+        {
+            auto sample = buffer.getSample (channel, i);
+            const float shifted = sample * drive + asym;
+            auto saturated = std::tanh (shifted) - std::tanh (asym);
+            saturated = onePoleHighPass (saturated, tubeDcState[static_cast<size_t> (channel)], tubeDcCoeff);
+            sample = sanitizeSample (saturated * compensation);
+            buffer.setSample (channel, i, sample);
+            blockHeat = juce::jmax (blockHeat, tubeDrive * std::abs (sample));
+        }
+    }
+
+    tubeHeatMeter = juce::jmax (tubeHeatMeter * 0.90f, juce::jlimit (0.f, 1.f, blockHeat));
+}
+
+void AuraBigEngine::processTransistorEdge (juce::AudioBuffer<float>& buffer,
+                                           const AuraBigParams& params,
+                                           float amount) noexcept
+{
+    if (params.globalBypass || params.transistorBypass || amount <= kNearZero || params.transistor <= kNearZero)
+        return;
+
+    const float transistorDrive = amount * params.transistor * 0.75f;
+    const float drive = 1.0f + transistorDrive * 1.8f;
+    const float shelfDb = transistorDrive * 1.2f;
+    const float compensation = 1.0f / (1.0f + transistorDrive * 0.28f);
+    setHighShelf (transistorShelfCoefficients, 3200.f, shelfDb);
+
+    const auto channels = juce::jmin (buffer.getNumChannels(), numChannels);
+    const auto numSamples = buffer.getNumSamples();
+    float blockHeat = 0.f;
+
+    for (int i = 0; i < numSamples; ++i)
+    {
+        for (int channel = 0; channel < channels; ++channel)
+        {
+            auto sample = buffer.getSample (channel, i);
+            sample = processBiquad (sample, transistorShelfZ1[static_cast<size_t> (channel)][0],
+                                    transistorShelfZ2[static_cast<size_t> (channel)][0],
+                                    transistorShelfCoefficients);
+            const float driven = sample * drive;
+            sample = sanitizeSample ((driven / (1.0f + std::abs (driven))) * compensation);
+            buffer.setSample (channel, i, sample);
+            blockHeat = juce::jmax (blockHeat, transistorDrive * std::abs (sample));
+        }
+    }
+
+    edgeHeatMeter = juce::jmax (edgeHeatMeter * 0.90f, juce::jlimit (0.f, 1.f, blockHeat));
+}
+
+void AuraBigEngine::processTransformerWeight (juce::AudioBuffer<float>& buffer,
+                                              const AuraBigParams& params,
+                                              float amount) noexcept
+{
+    if (params.globalBypass || params.transformerBypass || amount <= kNearZero || params.transformer <= kNearZero)
+        return;
+
+    const float transformerDrive = amount * params.transformer * 0.85f;
+    const float shelfDb = juce::jmin (transformerDrive * 2.0f, 2.0f);
+    const float compensation = 1.0f / (1.0f + transformerDrive * 0.22f);
+    setLowShelf (transformerShelfCoefficients, 180.f, shelfDb);
+
+    const auto channels = juce::jmin (buffer.getNumChannels(), numChannels);
+    const auto numSamples = buffer.getNumSamples();
+    float blockHeat = 0.f;
+
+    for (int i = 0; i < numSamples; ++i)
+    {
+        for (int channel = 0; channel < channels; ++channel)
+        {
+            auto sample = buffer.getSample (channel, i);
+            const auto shelved = processBiquad (sample, transformerShelfZ1[static_cast<size_t> (channel)][0],
+                                                transformerShelfZ2[static_cast<size_t> (channel)][0],
+                                                transformerShelfCoefficients);
+            const auto weighted = sample * 0.65f + shelved * 0.35f;
+            const auto saturated = softSaturate (weighted * (1.0f + transformerDrive * 0.8f));
+            auto processed = saturated * compensation;
+            processed = onePoleHighPass (processed, transformerHpfState[static_cast<size_t> (channel)],
+                                         transformerHpfCoeff);
+            sample = sanitizeSample (processed);
+            buffer.setSample (channel, i, sample);
+            blockHeat = juce::jmax (blockHeat, transformerDrive * std::abs (sample));
+        }
+    }
+
+    ironHeatMeter = juce::jmax (ironHeatMeter * 0.90f, juce::jlimit (0.f, 1.f, blockHeat));
+}
+
+void AuraBigEngine::processVocalDensity (juce::AudioBuffer<float>& buffer,
+                                         const AuraBigParams& params,
+                                         float amount) noexcept
+{
+    if (params.globalBypass || params.densityBypass || amount <= kNearZero || params.density <= kNearZero)
+        return;
+
+    const float densityBlend = juce::jmin (amount * params.density * 0.35f, 0.35f);
+    const auto channels = juce::jmin (buffer.getNumChannels(), stageDryBuffer.getNumChannels(), numChannels);
+    const auto numSamples = buffer.getNumSamples();
+
+    for (int channel = 0; channel < channels; ++channel)
+        stageDryBuffer.copyFrom (channel, 0, buffer, channel, 0, numSamples);
+
+    for (int i = 0; i < numSamples; ++i)
+    {
+        for (int channel = 0; channel < channels; ++channel)
+        {
+            const auto dry = stageDryBuffer.getSample (channel, i);
+            auto dense = softSaturate (dry * (1.0f + densityBlend * 3.0f));
+            dense *= 1.0f / (1.0f + std::abs (dense) * 0.1f);
+            const auto wet = dry * (1.0f - densityBlend) + dense * densityBlend;
+            buffer.setSample (channel, i, sanitizeSample (wet));
+        }
+    }
+}
+
 void AuraBigEngine::processPlaceholderStages (const AuraBigParams& params) noexcept
 {
-    juce::ignoreUnused (params.tube, params.transistor, params.transformer,
-                         params.density, params.air, params.width);
+    juce::ignoreUnused (params.air, params.width);
 
-    if (params.tubeBypass || params.globalBypass)
-        { /* pass-through */ }
-    if (params.transistorBypass || params.globalBypass)
-        { /* pass-through */ }
-    if (params.transformerBypass || params.globalBypass)
-        { /* pass-through */ }
-    if (params.densityBypass || params.globalBypass)
-        { /* pass-through */ }
     if (params.airBypass || params.globalBypass)
         { /* pass-through */ }
     if (params.widthBypass || params.globalBypass)
@@ -363,6 +529,9 @@ void AuraBigEngine::process (juce::AudioBuffer<float>& buffer, const AuraBigPara
         bodyGainSmoother.skip (numSamples);
         airGainSmoother.skip (numSamples);
         harshGainSmoother.skip (numSamples);
+        tubeHeatMeter = 0.f;
+        edgeHeatMeter = 0.f;
+        ironHeatMeter = 0.f;
         return;
     }
 
@@ -374,6 +543,10 @@ void AuraBigEngine::process (juce::AudioBuffer<float>& buffer, const AuraBigPara
 
     processInputTrim (buffer, params, numSamples);
     processToneLift (buffer, params, blockAmount);
+    processTubeWarmth (buffer, params, blockAmount);
+    processTransistorEdge (buffer, params, blockAmount);
+    processTransformerWeight (buffer, params, blockAmount);
+    processVocalDensity (buffer, params, blockAmount);
     processPlaceholderStages (params);
     processAdaptiveLimiter (buffer, params, numSamples);
     processOutputTrim (buffer, params, numSamples);

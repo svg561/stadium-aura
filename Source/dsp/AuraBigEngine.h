@@ -41,6 +41,9 @@ public:
     float getInputRmsDb() const noexcept { return inputRmsDb; }
     float getInputPeakDb() const noexcept { return inputPeakDb; }
     bool isActive() const noexcept { return active; }
+    float getTubeHeat() const noexcept { return tubeHeatMeter; }
+    float getEdgeHeat() const noexcept { return edgeHeatMeter; }
+    float getIronHeat() const noexcept { return ironHeatMeter; }
 
 private:
     struct BiquadCoefficients
@@ -52,6 +55,10 @@ private:
     void updateSweetSpotState() noexcept;
     void processInputTrim (juce::AudioBuffer<float>& buffer, const AuraBigParams& params, int numSamples) noexcept;
     void processToneLift (juce::AudioBuffer<float>& buffer, const AuraBigParams& params, float amount) noexcept;
+    void processTubeWarmth (juce::AudioBuffer<float>& buffer, const AuraBigParams& params, float amount) noexcept;
+    void processTransistorEdge (juce::AudioBuffer<float>& buffer, const AuraBigParams& params, float amount) noexcept;
+    void processTransformerWeight (juce::AudioBuffer<float>& buffer, const AuraBigParams& params, float amount) noexcept;
+    void processVocalDensity (juce::AudioBuffer<float>& buffer, const AuraBigParams& params, float amount) noexcept;
     void processPlaceholderStages (const AuraBigParams& params) noexcept;
     void processAdaptiveLimiter (juce::AudioBuffer<float>& buffer, const AuraBigParams& params, int numSamples) noexcept;
     void processOutputTrim (juce::AudioBuffer<float>& buffer, const AuraBigParams& params, int numSamples) noexcept;
@@ -64,8 +71,10 @@ private:
     void setLowShelf (BiquadCoefficients& c, float frequency, float gainDb) noexcept;
     void setHighShelf (BiquadCoefficients& c, float frequency, float gainDb) noexcept;
     void setPeak (BiquadCoefficients& c, float frequency, float gainDb, float q) noexcept;
+    void updateOnePoleCoefficients() noexcept;
 
     juce::AudioBuffer<float> dryBuffer;
+    juce::AudioBuffer<float> stageDryBuffer;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> amountSmoother;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> inputGainSmoother;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> outputGainSmoother;
@@ -77,15 +86,28 @@ private:
     BiquadCoefficients airShelfCoefficients;
     BiquadCoefficients harshBellCoefficients;
     BiquadCoefficients subHpfCoefficients;
+    BiquadCoefficients transistorShelfCoefficients;
+    BiquadCoefficients transformerShelfCoefficients;
     std::array<std::array<float, 2>, 4> toneZ1 {};
     std::array<std::array<float, 2>, 4> toneZ2 {};
+    std::array<std::array<float, 2>, 4> transistorShelfZ1 {};
+    std::array<std::array<float, 2>, 4> transistorShelfZ2 {};
+    std::array<std::array<float, 2>, 4> transformerShelfZ1 {};
+    std::array<std::array<float, 2>, 4> transformerShelfZ2 {};
+    std::array<float, 4> tubeDcState {};
+    std::array<float, 4> transformerHpfState {};
 
+    float tubeDcCoeff = 0.f;
+    float transformerHpfCoeff = 0.f;
     float limiterGain = 1.f;
     double sampleRate = 44100.0;
 
     SweetSpotState sweetSpotState = SweetSpotState::TooLow;
     float inputRmsDb = -60.f;
     float inputPeakDb = -60.f;
+    float tubeHeatMeter = 0.f;
+    float edgeHeatMeter = 0.f;
+    float ironHeatMeter = 0.f;
     bool active = false;
     int numChannels = 2;
 };

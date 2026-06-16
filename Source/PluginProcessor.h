@@ -55,6 +55,9 @@ public:
     std::atomic<int> auraBigSweetSpotState { 0 };
     std::atomic<float> auraBigInputRmsDb { -60.f };
     std::atomic<float> auraBigInputPeakDb { -60.f };
+    std::atomic<float> auraBigTubeHeat { 0.f };
+    std::atomic<float> auraBigEdgeHeat { 0.f };
+    std::atomic<float> auraBigIronHeat { 0.f };
 
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     AnalyzerSnapshot getAnalyzerSnapshot() const noexcept;

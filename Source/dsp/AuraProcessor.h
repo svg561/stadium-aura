@@ -101,6 +101,9 @@ public:
     SweetSpotState getAuraBigSweetSpotState() const noexcept { return auraBigEngine.getSweetSpotState(); }
     float getAuraBigInputRmsDb() const noexcept { return auraBigEngine.getInputRmsDb(); }
     float getAuraBigInputPeakDb() const noexcept { return auraBigEngine.getInputPeakDb(); }
+    float getAuraBigTubeHeat() const noexcept { return auraBigEngine.getTubeHeat(); }
+    float getAuraBigEdgeHeat() const noexcept { return auraBigEngine.getEdgeHeat(); }
+    float getAuraBigIronHeat() const noexcept { return auraBigEngine.getIronHeat(); }
     bool isAuraBigActive() const noexcept { return auraBigEngine.isActive(); }
 
 private:
