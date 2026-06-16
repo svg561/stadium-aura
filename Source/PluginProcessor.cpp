@@ -352,6 +352,9 @@ void StadiumAuraAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, 
     auraBigSweetSpotState.store (static_cast<int> (auraProcessor.getAuraBigSweetSpotState()), std::memory_order_relaxed);
     auraBigInputRmsDb.store (auraProcessor.getAuraBigInputRmsDb(), std::memory_order_relaxed);
     auraBigInputPeakDb.store (auraProcessor.getAuraBigInputPeakDb(), std::memory_order_relaxed);
+    auraBigTubeHeat.store (auraProcessor.getAuraBigTubeHeat(), std::memory_order_relaxed);
+    auraBigEdgeHeat.store (auraProcessor.getAuraBigEdgeHeat(), std::memory_order_relaxed);
+    auraBigIronHeat.store (auraProcessor.getAuraBigIronHeat(), std::memory_order_relaxed);
     outputMeter.store (peakForBuffer (buffer), std::memory_order_relaxed);
     outputLeftMeter.store (peakForChannel (buffer, 0), std::memory_order_relaxed);
     outputRightMeter.store (peakForChannel (buffer, juce::jmin (1, buffer.getNumChannels() - 1)), std::memory_order_relaxed);
